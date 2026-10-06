@@ -1,0 +1,52 @@
+name: Build and Release OpenCX APK
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for softprops/action-gh-release to upload release assets
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 23 (Latest Actions v6)
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '23'
+          cache: 'gradle'
+
+      - name: Setup Gradle (Latest Actions v6)
+        uses: gradle/actions/setup-gradle@v6
+
+      # Step 1: Compile the APK
+      - name: Build Debug APK
+        run: chmod +x gradlew && ./gradlew assembleDebug --stacktrace
+
+      # Step 2: Unzipped Direct Artifact (Raw .apk download, no .zip wrapper)
+      - name: Upload Raw APK to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenCX-Debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          archive: false # Keeps file as pure .apk without wrapping into a .zip
+
+      # Step 3: Publish directly to GitHub Releases
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || 'v2.7.8-preview' }}
+          name: OpenCX ${{ github.ref_name || 'v2.7.8 Preview' }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
