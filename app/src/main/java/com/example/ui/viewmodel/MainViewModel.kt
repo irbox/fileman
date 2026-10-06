@@ -12,6 +12,7 @@ import androidx.room.Room
 import com.example.data.crypto.VaultCrypto
 import com.example.data.db.*
 import com.example.data.model.*
+import com.example.data.p2p.*
 import com.example.data.repository.FileManagerRepository
 import com.example.data.repository.PreferencesRepository
 import com.example.data.repository.SafRepository
@@ -30,6 +31,7 @@ enum class NavigationScreen(val title: String) {
     RECENT("Recent Files"),
     ANALYZER("Analyze"),
     VAULT("Vault"),
+    P2P_SYNC("Wi-Fi Sync"),
     SETTINGS("Privacy & About")
 }
 
@@ -121,10 +123,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var activeDetailsFile: FileItem? = null
     val activeFileChecksums = MutableStateFlow<Map<String, String>>(emptyMap())
 
-    // Theme Customization
+    // Theme Customization & Power Optimization
     val isDarkMode = MutableStateFlow(true)
     val darkThemeStyle = MutableStateFlow(DarkThemeStyle.SLATE)
     val accentChoice = MutableStateFlow(AccentChoice.CYAN)
+    val isDynamicColor = MutableStateFlow(true)
+    val isLowPowerMode = MutableStateFlow(false)
+
+    // Local-only P2P Wi-Fi Direct File Sync (Zero Telemetry)
+    val p2pSyncHelper = WifiP2pSyncHelper(application)
+    val p2pSyncState: StateFlow<P2pSyncUiState> = p2pSyncHelper.uiState
 
     val defaultRoot: File
         get() = fileRepository.getPrimaryStorageRoot()
@@ -152,6 +160,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isDarkMode.value = prefs.isDarkMode
                 darkThemeStyle.value = prefs.darkThemeStyle
                 accentChoice.value = prefs.accentChoice
+                isDynamicColor.value = prefs.isDynamicColor
+                isLowPowerMode.value = prefs.isLowPowerMode
                 _explorerState.update {
                     it.copy(
                         viewLayout = prefs.viewLayout,
@@ -177,6 +187,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         accentChoice.value = choice
         viewModelScope.launch { preferencesRepository.setAccentChoice(choice) }
     }
+
+    fun setDynamicColor(enabled: Boolean) {
+        isDynamicColor.value = enabled
+        viewModelScope.launch { preferencesRepository.setDynamicColor(enabled) }
+    }
+
+    fun setLowPowerMode(enabled: Boolean) {
+        isLowPowerMode.value = enabled
+        viewModelScope.launch { preferencesRepository.setLowPowerMode(enabled) }
+    }
+
+    // Wi-Fi Direct P2P Actions
+    fun startP2pDiscovery() = p2pSyncHelper.startDiscovery()
+    fun connectToP2pDevice(device: P2pDeviceItem) = p2pSyncHelper.connectToDevice(device)
+    fun sendP2pFile(file: File) = p2pSyncHelper.sendFile(file)
+    fun disconnectP2p() = p2pSyncHelper.disconnect()
 
     fun checkStoragePermissions() {
         val hasPerm = fileRepository.hasAllFilesAccess()
@@ -907,5 +933,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopAudio()
+        p2pSyncHelper.cleanup()
     }
 }

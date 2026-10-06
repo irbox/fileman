@@ -36,17 +36,22 @@ fun DonutChart(
     modifier: Modifier = Modifier,
     chartSize: Dp = 220.dp,
     strokeWidth: Dp = 28.dp,
+    isLowPowerMode: Boolean = false,
     onCategoryClick: ((DiskCategoryUsage) -> Unit)? = null
 ) {
     var selectedCategory by remember { mutableStateOf<DiskCategoryUsage?>(null) }
-    val animationProgress = remember { Animatable(0f) }
+    val animationProgress = remember { Animatable(if (isLowPowerMode) 1f else 0f) }
 
-    LaunchedEffect(categories) {
-        animationProgress.snapTo(0f)
-        animationProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
-        )
+    LaunchedEffect(categories, isLowPowerMode) {
+        if (isLowPowerMode) {
+            animationProgress.snapTo(1f)
+        } else {
+            animationProgress.snapTo(0f)
+            animationProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
+            )
+        }
     }
 
     Column(

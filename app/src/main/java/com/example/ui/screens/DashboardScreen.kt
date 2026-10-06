@@ -292,6 +292,15 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateToScreen(NavigationScreen.ANALYZER) }
                 )
+
+                PowerToolCard(
+                    title = "Wi-Fi Sync",
+                    subtitle = "P2P Offline",
+                    icon = Icons.Default.WifiTethering,
+                    iconColor = LibreEmerald,
+                    modifier = Modifier.weight(1f),
+                    onClick = { viewModel.navigateToScreen(NavigationScreen.P2P_SYNC) }
+                )
             }
         }
 

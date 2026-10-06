@@ -40,6 +40,7 @@ fun StorageAnalyticsScreen(
     val state by analyticsViewModel.uiState.collectAsState()
     val trashItems by viewModel.fileRepository.trashItems.collectAsState(initial = emptyList())
     val trashSize = trashItems.sumOf { it.sizeBytes }
+    val isLowPower by viewModel.isLowPowerMode.collectAsState()
 
     LaunchedEffect(Unit) {
         analyticsViewModel.loadStorageAnalytics()
@@ -137,8 +138,24 @@ fun StorageAnalyticsScreen(
                                 totalUsedFormatted = FileItem.formatFileSize(state.usedBytes),
                                 usedPercentage = (state.usedPercentage * 100).toInt(),
                                 chartSize = 210.dp,
-                                strokeWidth = 26.dp
+                                strokeWidth = 26.dp,
+                                isLowPowerMode = isLowPower
                             )
+
+                            if (isLowPower) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                ) {
+                                    Text(
+                                        text = "⚡ Low Power Mode: Static analytics & reduced frame rasterization",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

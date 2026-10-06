@@ -21,8 +21,28 @@ enum class AccentChoice(val displayName: String, val primary: Color, val seconda
     CYAN("Electric Cyan", LibreCyanLight, LibreCyan),
     EMERALD("Libre Emerald", LibreEmeraldLight, LibreEmerald),
     INDIGO("Neon Indigo", LibreIndigoLight, LibreIndigo),
-    AMBER("Amber Gold", LibreAmber, LibreRose)
+    AMBER("Amber Gold", LibreAmberLight, LibreAmber),
+    ROSE("Sakura Rose", LibreRoseLight, LibreRose),
+    VIOLET("Royal Violet", LibreVioletLight, LibreViolet),
+    SUNSET("Sunset Blaze", LibreSunsetLight, LibreSunset),
+    TEAL("Deep Teal", LibreTealLight, LibreTeal)
 }
+
+fun getLightColorScheme(accent: AccentChoice) = lightColorScheme(
+    primary = accent.secondary,
+    onPrimary = Color.White,
+    primaryContainer = accent.primary.copy(alpha = 0.25f),
+    onPrimaryContainer = Color(0xFF0F172A),
+    secondary = accent.primary,
+    onSecondary = Color.White,
+    background = Color(0xFFF8FAFC),
+    surface = Color.White,
+    surfaceVariant = Color(0xFFF1F5F9),
+    onBackground = Color(0xFF0F172A),
+    onSurface = Color(0xFF0F172A),
+    onSurfaceVariant = Color(0xFF64748B),
+    outline = Color(0xFFCBD5E1)
+)
 
 fun getDarkColorScheme(style: DarkThemeStyle, accent: AccentChoice) = when (style) {
     DarkThemeStyle.SLATE -> darkColorScheme(
@@ -102,7 +122,7 @@ fun LibreFilesTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> getDarkColorScheme(darkThemeStyle, accentChoice)
-        else -> LibreLightColorScheme
+        else -> getLightColorScheme(accentChoice)
     }
 
     MaterialTheme(

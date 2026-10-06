@@ -52,11 +52,18 @@ class StorageAnalyticsViewModel(application: Application) : AndroidViewModel(app
     ).fallbackToDestructiveMigration().build()
 
     val fileRepository = FileManagerRepository(application, database)
+    val preferencesRepository = com.example.data.repository.PreferencesRepository(application)
+    private var isLowPowerMode = false
 
     private val _uiState = MutableStateFlow(StorageAnalyticsUiState())
     val uiState: StateFlow<StorageAnalyticsUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            preferencesRepository.userPreferencesFlow.collect { prefs ->
+                isLowPowerMode = prefs.isLowPowerMode
+            }
+        }
         loadStorageAnalytics()
     }
 

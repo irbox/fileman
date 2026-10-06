@@ -20,6 +20,8 @@ data class AppUserPreferences(
     val isDarkMode: Boolean = true,
     val darkThemeStyle: DarkThemeStyle = DarkThemeStyle.SLATE,
     val accentChoice: AccentChoice = AccentChoice.CYAN,
+    val isDynamicColor: Boolean = true,
+    val isLowPowerMode: Boolean = false,
     val viewLayout: ViewLayout = ViewLayout.LIST,
     val showHiddenFiles: Boolean = false,
     val sortField: SortField = SortField.NAME,
@@ -32,6 +34,8 @@ class PreferencesRepository(private val context: Context) {
         val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
         val DARK_THEME_STYLE = stringPreferencesKey("dark_theme_style")
         val ACCENT_CHOICE = stringPreferencesKey("accent_choice")
+        val IS_DYNAMIC_COLOR = booleanPreferencesKey("is_dynamic_color")
+        val IS_LOW_POWER_MODE = booleanPreferencesKey("is_low_power_mode")
         val VIEW_LAYOUT = stringPreferencesKey("view_layout")
         val SHOW_HIDDEN_FILES = booleanPreferencesKey("show_hidden_files")
         val SORT_FIELD = stringPreferencesKey("sort_field")
@@ -85,10 +89,15 @@ class PreferencesRepository(private val context: Context) {
                 SortDirection.ASCENDING
             }
 
+            val isDynamic = preferences[PreferencesKeys.IS_DYNAMIC_COLOR] ?: true
+            val isLowPower = preferences[PreferencesKeys.IS_LOW_POWER_MODE] ?: false
+
             AppUserPreferences(
                 isDarkMode = isDark,
                 darkThemeStyle = style,
                 accentChoice = accent,
+                isDynamicColor = isDynamic,
+                isLowPowerMode = isLowPower,
                 viewLayout = layout,
                 showHiddenFiles = showHidden,
                 sortField = sortField,
@@ -111,6 +120,18 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAccentChoice(choice: AccentChoice) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.ACCENT_CHOICE] = choice.name
+        }
+    }
+
+    suspend fun setDynamicColor(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.IS_DYNAMIC_COLOR] = enabled
+        }
+    }
+
+    suspend fun setLowPowerMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.IS_LOW_POWER_MODE] = enabled
         }
     }
 

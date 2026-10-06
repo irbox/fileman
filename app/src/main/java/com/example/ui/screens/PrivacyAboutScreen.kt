@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.AuditLogEntity
@@ -39,6 +40,8 @@ fun PrivacyAboutScreen(
     val isDark by viewModel.isDarkMode.collectAsState()
     val currentStyle by viewModel.darkThemeStyle.collectAsState()
     val currentAccent by viewModel.accentChoice.collectAsState()
+    val isDynamic by viewModel.isDynamicColor.collectAsState()
+    val isLowPower by viewModel.isLowPowerMode.collectAsState()
 
     var showLicenseDialog by remember { mutableStateOf(false) }
 
@@ -137,6 +140,30 @@ fun PrivacyAboutScreen(
                             )
                         }
 
+                        // Dynamic Material You (System Wallpaper)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Dynamic Material You", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Derive theme colors from system wallpaper",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isDynamic,
+                                    onCheckedChange = { viewModel.setDynamicColor(it) },
+                                    modifier = Modifier.testTag("dynamic_color_switch")
+                                )
+                            }
+                        }
+
                         if (isDark) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Dark Palette Style", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -159,34 +186,108 @@ fun PrivacyAboutScreen(
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
-                        Text("Accent Color", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (isDynamic && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) "Custom Expressive Palette (Override Dynamic)" else "Expressive Color Palette",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            AccentChoice.entries.forEach { accent ->
-                                val selected = currentAccent == accent
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(36.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(accent.primary)
-                                        .border(
-                                            width = if (selected) 2.dp else 0.dp,
-                                            color = if (selected) Color.White else Color.Transparent,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { viewModel.setAccentChoice(accent) },
-                                    contentAlignment = Alignment.Center
+                        // Grid of Expressive Pre-defined Palettes
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AccentChoice.entries.chunked(4).forEach { rowAccents ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (selected) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                    rowAccents.forEach { accent ->
+                                        val selected = currentAccent == accent && (!isDynamic || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S)
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = accent.primary.copy(alpha = if (selected) 0.25f else 0.12f),
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                width = if (selected) 2.dp else 1.dp,
+                                                color = if (selected) accent.primary else Color.Transparent
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    viewModel.setDynamicColor(false)
+                                                    viewModel.setAccentChoice(accent)
+                                                }
+                                                .testTag("palette_choice_${accent.name}")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(14.dp)
+                                                        .clip(CircleShape)
+                                                        .background(accent.primary)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = accent.displayName.split(" ").last(),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Performance & Low Power Mode Section
+            item {
+                Spacer(modifier = Modifier.height(20.dp))
+                Text("Performance & Battery Efficiency", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.BatteryChargingFull,
+                                        contentDescription = null,
+                                        tint = if (isLowPower) LibreEmerald else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Low Power Mode", fontWeight = FontWeight.Medium)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Reduces UI motion animation intensity and lowers the background refresh rate for storage analytics, improving overall device performance and battery efficiency.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Switch(
+                                checked = isLowPower,
+                                onCheckedChange = { viewModel.setLowPowerMode(it) },
+                                modifier = Modifier.testTag("low_power_mode_switch")
+                            )
                         }
                     }
                 }

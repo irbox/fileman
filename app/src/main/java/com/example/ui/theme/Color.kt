@@ -14,7 +14,15 @@ val LibreIndigo = Color(0xFF6366F1)
 val LibreIndigoLight = Color(0xFF818CF8)
 
 val LibreAmber = Color(0xFFF59E0B)
+val LibreAmberLight = Color(0xFFFBBF24)
 val LibreRose = Color(0xFFF43F5E)
+val LibreRoseLight = Color(0xFFFB7185)
+val LibreViolet = Color(0xFF8B5CF6)
+val LibreVioletLight = Color(0xFFA78BFA)
+val LibreSunset = Color(0xFFEA580C)
+val LibreSunsetLight = Color(0xFFFB923C)
+val LibreTeal = Color(0xFF0D9488)
+val LibreTealLight = Color(0xFF2DD4BF)
 
 // Dark Slate Surface
 val Slate900 = Color(0xFF0F172A)

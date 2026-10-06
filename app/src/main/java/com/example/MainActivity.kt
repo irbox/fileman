@@ -49,6 +49,7 @@ object NavRoutes {
     const val RECENT = "recent"
     const val ANALYZER = "analyzer"
     const val VAULT = "vault"
+    const val P2P_SYNC = "p2p_sync"
     const val SETTINGS = "settings"
 }
 
@@ -61,11 +62,13 @@ class MainActivity : FragmentActivity() {
             val isDark by viewModel.isDarkMode.collectAsState()
             val darkStyle by viewModel.darkThemeStyle.collectAsState()
             val accent by viewModel.accentChoice.collectAsState()
+            val isDynamic by viewModel.isDynamicColor.collectAsState()
 
             LibreFilesTheme(
                 darkTheme = isDark,
                 darkThemeStyle = darkStyle,
-                accentChoice = accent
+                accentChoice = accent,
+                dynamicColor = isDynamic
             ) {
                 MainAppContent(viewModel = viewModel)
             }
@@ -115,6 +118,7 @@ fun MainAppContent(viewModel: MainViewModel) {
             NavigationScreen.RECENT -> NavRoutes.RECENT
             NavigationScreen.ANALYZER -> NavRoutes.ANALYZER
             NavigationScreen.VAULT -> NavRoutes.VAULT
+            NavigationScreen.P2P_SYNC -> NavRoutes.P2P_SYNC
             NavigationScreen.SETTINGS -> NavRoutes.SETTINGS
         }
         if (navController.currentDestination?.route != targetRoute) {
@@ -417,6 +421,9 @@ fun MainAppContent(viewModel: MainViewModel) {
                         }
                         composable(NavRoutes.VAULT) {
                             SecureVaultScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.P2P_SYNC) {
+                            P2pSyncScreen(viewModel = viewModel)
                         }
                         composable(NavRoutes.SETTINGS) {
                             PrivacyAboutScreen(viewModel = viewModel)
