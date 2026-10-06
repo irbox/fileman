@@ -91,6 +91,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val activeZipFile by viewModel.activeZipFile.collectAsState()
     val activeAudioFile by viewModel.activeAudioFile.collectAsState()
     val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
+    val isLowPower by viewModel.isLowPowerMode.collectAsState()
 
     var activeTextFile by remember { mutableStateOf(viewModel.activeTextEditorFile) }
     var activeDetailsFile by remember { mutableStateOf(viewModel.activeDetailsFile) }
@@ -302,6 +303,19 @@ fun MainAppContent(viewModel: MainViewModel) {
                     )
 
                     NavigationRailItem(
+                        selected = currentScreen == NavigationScreen.RECENT,
+                        onClick = { navigateTo(NavRoutes.RECENT, NavigationScreen.RECENT) },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentScreen == NavigationScreen.RECENT) Icons.Default.History else Icons.Outlined.History,
+                                contentDescription = "Recent"
+                            )
+                        },
+                        label = { Text("Recent") },
+                        modifier = Modifier.testTag("rail_recent")
+                    )
+
+                    NavigationRailItem(
                         selected = currentScreen == NavigationScreen.ANALYZER,
                         onClick = { navigateTo(NavRoutes.ANALYZER, NavigationScreen.ANALYZER) },
                         icon = {
@@ -325,6 +339,19 @@ fun MainAppContent(viewModel: MainViewModel) {
                         },
                         label = { Text("Vault") },
                         modifier = Modifier.testTag("rail_vault")
+                    )
+
+                    NavigationRailItem(
+                        selected = currentScreen == NavigationScreen.P2P_SYNC,
+                        onClick = { navigateTo(NavRoutes.P2P_SYNC, NavigationScreen.P2P_SYNC) },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentScreen == NavigationScreen.P2P_SYNC) Icons.Default.WifiTethering else Icons.Outlined.WifiTethering,
+                                contentDescription = "Wi-Fi Sync"
+                            )
+                        },
+                        label = { Text("Sync") },
+                        modifier = Modifier.testTag("rail_sync")
                     )
 
                     NavigationRailItem(
@@ -355,6 +382,9 @@ fun MainAppContent(viewModel: MainViewModel) {
                         }
                     }
 
+                    val enterAnimDuration = if (isLowPower) 100 else 380
+                    val exitAnimDuration = if (isLowPower) 80 else 320
+
                     // Material 3 Expressive motion navigation between views
                     NavHost(
                         navController = navController,
@@ -366,44 +396,44 @@ fun MainAppContent(viewModel: MainViewModel) {
                             slideInHorizontally(
                                 initialOffsetX = { fullWidth -> (fullWidth * 0.18f).toInt() },
                                 animationSpec = tween(
-                                    durationMillis = 380,
+                                    durationMillis = enterAnimDuration,
                                     easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
                                 )
                             ) + fadeIn(
-                                animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing)
+                                animationSpec = tween(durationMillis = (enterAnimDuration * 0.8f).toInt(), easing = LinearOutSlowInEasing)
                             )
                         },
                         exitTransition = {
                             slideOutHorizontally(
                                 targetOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
                                 animationSpec = tween(
-                                    durationMillis = 320,
+                                    durationMillis = exitAnimDuration,
                                     easing = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
                                 )
                             ) + fadeOut(
-                                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
+                                animationSpec = tween(durationMillis = (exitAnimDuration * 0.75f).toInt(), easing = FastOutLinearInEasing)
                             )
                         },
                         popEnterTransition = {
                             slideInHorizontally(
                                 initialOffsetX = { fullWidth -> -(fullWidth * 0.18f).toInt() },
                                 animationSpec = tween(
-                                    durationMillis = 380,
+                                    durationMillis = enterAnimDuration,
                                     easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
                                 )
                             ) + fadeIn(
-                                animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing)
+                                animationSpec = tween(durationMillis = (enterAnimDuration * 0.8f).toInt(), easing = LinearOutSlowInEasing)
                             )
                         },
                         popExitTransition = {
                             slideOutHorizontally(
                                 targetOffsetX = { fullWidth -> (fullWidth * 0.18f).toInt() },
                                 animationSpec = tween(
-                                    durationMillis = 320,
+                                    durationMillis = exitAnimDuration,
                                     easing = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
                                 )
                             ) + fadeOut(
-                                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
+                                animationSpec = tween(durationMillis = (exitAnimDuration * 0.75f).toInt(), easing = FastOutLinearInEasing)
                             )
                         }
                     ) {

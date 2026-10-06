@@ -562,23 +562,35 @@ fun CategoryGridSection(
         FileCategory.TRASH
     )
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        categories.chunked(4).forEach { rowList ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                rowList.forEach { category ->
-                    CategoryTile(
-                        category = category,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(category) }
-                    )
+        val itemsPerRow = if (maxWidth >= 720.dp) 8 else 4
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            categories.chunked(itemsPerRow).forEach { rowList ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    rowList.forEach { category ->
+                        CategoryTile(
+                            category = category,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onCategoryClick(category) }
+                        )
+                    }
+                    val remaining = itemsPerRow - rowList.size
+                    if (remaining > 0) {
+                        repeat(remaining) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }

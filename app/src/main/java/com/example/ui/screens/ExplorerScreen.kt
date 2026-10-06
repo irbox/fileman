@@ -536,7 +536,7 @@ fun ExplorerScreen(
                         }
                         ViewLayout.GRID -> {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Adaptive(minSize = 110.dp),
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 96.dp, top = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
