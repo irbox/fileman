@@ -2,16 +2,15 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -24,8 +23,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,7 +30,6 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.model.FileCategory
 import com.example.data.model.FileItem
 import com.example.ui.theme.*
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,7 +63,7 @@ fun getFileIconAndColor(item: FileItem): Pair<ImageVector, Color> {
         "doc", "docx", "txt", "md", "csv", "json", "xml", "kt" -> Icons.Default.Description to ColorDoc
         "zip", "rar", "7z", "tar", "gz" -> Icons.Default.Archive to ColorArchive
         "apk" -> Icons.Default.Android to ColorApk
-        else -> Icons.Default.InsertDriveFile to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile to MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 
@@ -122,7 +118,7 @@ fun BreadcrumbBar(
             }
             if (!isLast) {
                 Icon(
-                    imageVector = Icons.Default.ChevronRight,
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(16.dp)
@@ -224,7 +220,7 @@ fun DetailRow(label: String, value: String) {
     }
 }
 
-// Built-in Text Editor Dialog
+// Next-Gen Text & Code Editor with Line Numbers and Statistics
 @Composable
 fun TextEditorDialog(
     fileName: String,
@@ -234,13 +230,19 @@ fun TextEditorDialog(
 ) {
     var text by remember { mutableStateOf(initialContent) }
 
+    val lineCount = remember(text) { text.count { it == '\n' } + 1 }
+    val charCount = remember(text) { text.length }
+    val wordCount = remember(text) {
+        if (text.isBlank()) 0 else text.trim().split(Regex("\\s+")).size
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.9f)
         ) {
             Column(
                 modifier = Modifier
@@ -253,16 +255,23 @@ fun TextEditorDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 16.sp)
+                        Column {
+                            Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp)
+                            Text(
+                                text = "$lineCount lines • $wordCount words • $charCount chars",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Close")
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = text,
@@ -271,7 +280,11 @@ fun TextEditorDialog(
                         .fillMaxWidth()
                         .weight(1f)
                         .testTag("text_editor_input"),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    ),
                     placeholder = { Text("Write content here...") }
                 )
 

@@ -4,17 +4,20 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -30,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.*
 import com.example.ui.components.*
+import com.example.ui.theme.LibreCyan
+import com.example.ui.theme.LibreIndigo
 import com.example.ui.viewmodel.MainViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -128,15 +133,21 @@ fun ExplorerScreen(
                                 onClick = { viewModel.navigateUp() },
                                 enabled = state.breadcrumbs.size > 1
                             ) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Navigate Up")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Navigate Up")
                             }
 
-                            Text(
-                                text = "Files",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Files",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                                Text(
+                                    text = "${state.currentFiles.size} items in directory",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             IconButton(onClick = { showSearchBar = !showSearchBar }) {
                                 Icon(
@@ -150,7 +161,7 @@ fun ExplorerScreen(
                                     imageVector = when (state.viewLayout) {
                                         ViewLayout.LIST -> Icons.Default.GridView
                                         ViewLayout.GRID -> Icons.Default.ViewAgenda
-                                        ViewLayout.COMPACT -> Icons.Default.ViewList
+                                        ViewLayout.COMPACT -> Icons.AutoMirrored.Filled.ViewList
                                     },
                                     contentDescription = "Toggle Layout"
                                 )
@@ -158,7 +169,7 @@ fun ExplorerScreen(
 
                             Box {
                                 IconButton(onClick = { showSortMenu = true }) {
-                                    Icon(Icons.Default.Sort, contentDescription = "Sort Options")
+                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort Options")
                                 }
                                 DropdownMenu(
                                     expanded = showSortMenu,
@@ -217,7 +228,7 @@ fun ExplorerScreen(
                             }
                         }
 
-                        // Search and Filter Bar
+                        // Search and Filter Bar with Quick Filter Pills
                         AnimatedVisibility(visible = showSearchBar) {
                             Column(
                                 modifier = Modifier
@@ -256,6 +267,31 @@ fun ExplorerScreen(
                                         .fillMaxWidth()
                                         .testTag("explorer_search_input")
                                 )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Quick Category Filter Row
+                                val quickCategories = listOf(
+                                    FileCategory.ALL,
+                                    FileCategory.DOCUMENTS,
+                                    FileCategory.IMAGES,
+                                    FileCategory.AUDIO,
+                                    FileCategory.ARCHIVES
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    quickCategories.forEach { cat ->
+                                        FilterChip(
+                                            selected = state.filterCriteria.selectedCategory == cat,
+                                            onClick = { viewModel.openCategory(cat) },
+                                            label = { Text(cat.title, fontSize = 11.sp) }
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -286,7 +322,7 @@ fun ExplorerScreen(
                             .padding(bottom = 8.dp)
                             .testTag("create_file_fab")
                     ) {
-                        Icon(Icons.Default.NoteAdd, contentDescription = "New File")
+                        Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = "New File")
                     }
 
                     FloatingActionButton(

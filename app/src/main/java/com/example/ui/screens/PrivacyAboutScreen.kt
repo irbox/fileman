@@ -146,7 +146,7 @@ fun PrivacyAboutScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                DarkThemeStyle.values().forEach { style ->
+                                DarkThemeStyle.entries.forEach { style ->
                                     val selected = currentStyle == style
                                     FilterChip(
                                         selected = selected,
@@ -166,7 +166,7 @@ fun PrivacyAboutScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            AccentChoice.values().forEach { accent ->
+                            AccentChoice.entries.forEach { accent ->
                                 val selected = currentAccent == accent
                                 Box(
                                     modifier = Modifier

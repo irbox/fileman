@@ -250,7 +250,7 @@ Marketing,0,0,0
         val catCounts = mutableMapOf<FileCategory, Pair<Int, Long>>()
         val allFiles = mutableListOf<FileItem>()
 
-        FileCategory.values().forEach {
+        FileCategory.entries.forEach {
             catCounts[it] = Pair(0, 0L)
         }
 
