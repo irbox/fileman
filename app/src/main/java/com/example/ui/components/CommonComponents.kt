@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,12 +28,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import com.example.data.model.ClipboardOp
 import com.example.data.model.FileCategory
 import com.example.data.model.FileItem
 import com.example.ui.theme.*
+import java.io.File
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipInputStream
 
 @Composable
 fun getCategoryIconAndColor(category: FileCategory): Pair<ImageVector, Color> {
@@ -308,6 +314,281 @@ fun TextEditorDialog(
                         Text("Save File")
                     }
                 }
+            }
+        }
+    }
+}
+
+// Built-in Fullscreen Image Previewer
+@Composable
+fun ImageViewerDialog(
+    item: FileItem,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Black,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.name,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = item.file ?: item.uri ?: item.path,
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = item.formattedSize,
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = item.mimeType,
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Floating Bottom Audio Player Bar
+@Composable
+fun AudioPlayerBar(
+    item: FileItem,
+    isPlaying: Boolean,
+    onTogglePlay: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 6.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Local Audio Player • ${item.formattedSize}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onTogglePlay) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Stop", modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+// ZIP Archive Inspector Dialog
+@Composable
+fun ZipInspectorDialog(
+    item: FileItem,
+    onExtract: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var entries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(item.path) {
+        val file = item.file ?: File(item.path)
+        if (file.exists()) {
+            val list = mutableListOf<String>()
+            try {
+                ZipInputStream(FileInputStream(file)).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null && list.size < 40) {
+                        list.add(entry.name)
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+            entries = list
+            isLoading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Archive, contentDescription = null, tint = LibreCyan)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 16.sp)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Archive Contents (${item.formattedSize}):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(8.dp))
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp).align(Alignment.CenterHorizontally))
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                    ) {
+                        entries.forEach { entryName ->
+                            Row(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (entryName.endsWith("/")) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(entryName, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onExtract()
+                onDismiss()
+            }) {
+                Text("Extract Here")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+// Persistent Clipboard Floating Bar
+@Composable
+fun PasteClipboardBar(
+    items: List<FileItem>,
+    operation: ClipboardOp,
+    onPaste: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 6.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (operation == ClipboardOp.COPY) Icons.Default.ContentCopy else Icons.Default.ContentCut,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${if (operation == ClipboardOp.COPY) "Copying" else "Moving"} ${items.size} items",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Text(
+                    text = "Navigate to destination folder and paste",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = onCancel) {
+                Text("Cancel", fontSize = 12.sp)
+            }
+            Button(
+                onClick = onPaste,
+                modifier = Modifier.testTag("paste_clipboard_button")
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Paste", fontSize = 12.sp)
             }
         }
     }

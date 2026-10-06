@@ -1,10 +1,14 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
 import android.webkit.MimeTypeMap
-import com.example.data.crypto.VaultCrypto
+import androidx.core.content.FileProvider
 import com.example.data.db.*
 import com.example.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +28,7 @@ class FileManagerRepository(
     private val fileTagDao = database.fileTagDao()
     private val trashDao = database.trashDao()
     private val auditLogDao = database.auditLogDao()
+    private val mediaStoreHelper = MediaStoreHelper(context)
 
     val bookmarks: Flow<List<BookmarkEntity>> = bookmarkDao.getAllBookmarks()
     val allTags: Flow<List<FileTagEntity>> = fileTagDao.getAllTags()
@@ -34,37 +39,72 @@ class FileManagerRepository(
         File(context.filesDir, "libre_trash").apply { if (!exists()) mkdirs() }
     }
 
-    private val sampleDataDir: File by lazy {
-        File(context.filesDir, "Local_Storage").apply { if (!exists()) mkdirs() }
+    fun hasAllFilesAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
+    }
+
+    fun getManageStorageIntent(): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } catch (e: Exception) {
+                Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+        } else {
+            Intent(Settings.ACTION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
+    fun getPrimaryStorageRoot(): File {
+        val ext = Environment.getExternalStorageDirectory()
+        return if (ext != null && ext.exists()) {
+            ext
+        } else {
+            context.filesDir
+        }
     }
 
     suspend fun getStorageVolumes(): List<StorageVolume> = withContext(Dispatchers.IO) {
         val volumes = mutableListOf<StorageVolume>()
 
-        // Primary Storage (App sandbox / external files)
+        // 1. Primary Device Storage (/storage/emulated/0)
         try {
-            val extDir = context.getExternalFilesDir(null) ?: context.filesDir
-            val stat = StatFs(extDir.path)
-            val totalBytes = stat.blockCountLong * stat.blockSizeLong
-            val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
-            val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
+            val root = Environment.getExternalStorageDirectory()
+            if (root.exists()) {
+                val stat = StatFs(root.path)
+                val totalBytes = stat.blockCountLong * stat.blockSizeLong
+                val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+                val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
 
-            volumes.add(
-                StorageVolume(
-                    name = "Main Storage",
-                    path = extDir.path,
-                    totalBytes = totalBytes,
-                    freeBytes = freeBytes,
-                    usedBytes = usedBytes,
-                    isPrimary = true
+                volumes.add(
+                    StorageVolume(
+                        name = "Internal Storage",
+                        path = root.path,
+                        totalBytes = totalBytes,
+                        freeBytes = freeBytes,
+                        usedBytes = usedBytes,
+                        isPrimary = true
+                    )
                 )
-            )
+            }
         } catch (e: Exception) {
-            val stat = StatFs(context.filesDir.path)
+            val fallback = context.getExternalFilesDir(null) ?: context.filesDir
+            val stat = StatFs(fallback.path)
             volumes.add(
                 StorageVolume(
                     name = "Internal Storage",
-                    path = context.filesDir.path,
+                    path = fallback.path,
                     totalBytes = stat.blockCountLong * stat.blockSizeLong,
                     freeBytes = stat.availableBlocksLong * stat.blockSizeLong,
                     usedBytes = (stat.blockCountLong - stat.availableBlocksLong) * stat.blockSizeLong,
@@ -73,73 +113,30 @@ class FileManagerRepository(
             )
         }
 
-        // Secondary / App Workspace Volume
-        val localStat = StatFs(sampleDataDir.path)
-        volumes.add(
-            StorageVolume(
-                name = "Libre Workspace",
-                path = sampleDataDir.path,
-                totalBytes = localStat.blockCountLong * localStat.blockSizeLong,
-                freeBytes = localStat.availableBlocksLong * localStat.blockSizeLong,
-                usedBytes = (localStat.blockCountLong - localStat.availableBlocksLong) * localStat.blockSizeLong,
-                isPrimary = false
-            )
-        )
+        // 2. Secondary SD card / External storage if present
+        try {
+            val dirs = context.getExternalFilesDirs(null)
+            if (dirs.size > 1 && dirs[1] != null) {
+                val sdDir = dirs[1]
+                val stat = StatFs(sdDir.path)
+                val totalBytes = stat.blockCountLong * stat.blockSizeLong
+                val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+                volumes.add(
+                    StorageVolume(
+                        name = "SD Card",
+                        path = sdDir.path,
+                        totalBytes = totalBytes,
+                        freeBytes = freeBytes,
+                        usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L),
+                        isPrimary = false
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // No secondary SD card
+        }
 
         volumes
-    }
-
-    suspend fun initializeSampleFilesIfEmpty() = withContext(Dispatchers.IO) {
-        if (sampleDataDir.listFiles().isNullOrEmpty()) {
-            val docs = File(sampleDataDir, "Documents").apply { mkdirs() }
-            val photos = File(sampleDataDir, "Photos").apply { mkdirs() }
-            val projects = File(sampleDataDir, "Projects").apply { mkdirs() }
-            val archives = File(sampleDataDir, "Archives").apply { mkdirs() }
-
-            File(docs, "Project_Manifesto.md").writeText(
-                """# LibreFiles — Open Source CX File Explorer
-### Privacy & Freedom Manifesto
-- Zero analytics, zero telemetry, zero data harvesting.
-- 100% Offline-first local data sovereignty.
-- Built-in AES-256-GCM encrypted vault.
-- Modern Material 3 expressive UI with gesture navigation.
-- Licensed under GPL v3 for community auditing and F-Droid packaging.
-""".trimIndent()
-            )
-
-            File(docs, "Q3_Financial_Budget.csv").writeText(
-                """Category,Allocated,Spent,Remaining
-Engineering,50000,42000,8000
-Infrastructure,12000,9800,2200
-Security Audit,15000,15000,0
-Marketing,0,0,0
-""".trimIndent()
-            )
-
-            File(projects, "config_prod.json").writeText(
-                """{
-  "app": "LibreFiles",
-  "version": "1.0.0",
-  "telemetry_enabled": false,
-  "crypto_cipher": "AES-256-GCM",
-  "storage_access_framework": true
-}
-""".trimIndent()
-            )
-
-            File(photos, "sample_landscape.txt").writeText("Sample image placeholder simulation for test preview.")
-            File(photos, "sunset_beach.txt").writeText("Vacation photo metadata and preview note.")
-            File(archives, "backup_notes.txt").writeText("Offline personal scratchpad.")
-
-            // Log initialization
-            auditLogDao.insertLog(
-                AuditLogEntity(
-                    action = "INITIALIZE",
-                    target = sampleDataDir.path,
-                    details = "Initialized LibreFiles workspace structure"
-                )
-            )
-        }
     }
 
     suspend fun listFiles(
@@ -198,7 +195,6 @@ Marketing,0,0,0
             )
         }
 
-        // Sorting: Folders always on top, then by sortOption
         items.sortedWith(Comparator { a, b ->
             if (a.isDirectory && !b.isDirectory) return@Comparator -1
             if (!a.isDirectory && b.isDirectory) return@Comparator 1
@@ -214,34 +210,34 @@ Marketing,0,0,0
         })
     }
 
-    suspend fun getCategoryFiles(category: FileCategory): List<FileItem> = withContext(Dispatchers.IO) {
-        val root = sampleDataDir
-        val results = mutableListOf<FileItem>()
-
-        fun scan(file: File) {
-            if (file.isDirectory) {
-                file.listFiles()?.forEach { scan(it) }
-            } else {
-                if (getFileCategory(file) == category) {
-                    results.add(
-                        FileItem(
-                            file = file,
-                            name = file.name,
-                            path = file.path,
-                            size = file.length(),
-                            isDirectory = false,
-                            lastModified = file.lastModified(),
-                            extension = file.extension.lowercase(),
-                            mimeType = getMimeType(file),
-                            isHidden = file.name.startsWith(".")
-                        )
-                    )
-                }
-            }
+    suspend fun getRecentFiles(): List<FileItem> = withContext(Dispatchers.IO) {
+        val fromMediaStore = mediaStoreHelper.queryRecentFiles(limit = 20)
+        if (fromMediaStore.isNotEmpty()) {
+            return@withContext fromMediaStore
         }
 
-        scan(root)
-        results.sortedByDescending { it.lastModified }
+        // Fallback: scan primary storage root
+        val root = getPrimaryStorageRoot()
+        val scanned = mutableListOf<FileItem>()
+        root.listFiles()?.filter { it.isFile && !it.name.startsWith(".") }?.take(15)?.forEach { f ->
+            scanned.add(
+                FileItem(
+                    file = f,
+                    name = f.name,
+                    path = f.path,
+                    size = f.length(),
+                    isDirectory = false,
+                    lastModified = f.lastModified(),
+                    extension = f.extension.lowercase(),
+                    mimeType = getMimeType(f)
+                )
+            )
+        }
+        scanned.sortedByDescending { it.lastModified }
+    }
+
+    suspend fun getCategoryFiles(category: FileCategory): List<FileItem> = withContext(Dispatchers.IO) {
+        mediaStoreHelper.queryCategory(category)
     }
 
     suspend fun analyzeStorage(): StorageAnalysisResult = withContext(Dispatchers.IO) {
@@ -249,25 +245,55 @@ Marketing,0,0,0
         var usedBytes = 0L
         val catCounts = mutableMapOf<FileCategory, Pair<Int, Long>>()
         val allFiles = mutableListOf<FileItem>()
+        val emptyDirs = mutableListOf<FileItem>()
 
         FileCategory.entries.forEach {
             catCounts[it] = Pair(0, 0L)
         }
 
+        val root = getPrimaryStorageRoot()
         try {
-            val stat = StatFs(sampleDataDir.path)
+            val stat = StatFs(root.path)
             totalBytes = stat.blockCountLong * stat.blockSizeLong
             val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
-            usedBytes = totalBytes - freeBytes
+            usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
         } catch (e: Exception) {
-            totalBytes = 64L * 1024 * 1024 * 1024
-            usedBytes = 22L * 1024 * 1024 * 1024
+            val stat = StatFs(context.filesDir.path)
+            totalBytes = stat.blockCountLong * stat.blockSizeLong
+            val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+            usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
         }
 
-        fun scanDir(dir: File) {
-            dir.listFiles()?.forEach { file ->
+        // Quick scan of main user directories for analyzer
+        val scanRoots = listOfNotNull(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+        ).filter { it.exists() }
+
+        fun scanDir(dir: File, depth: Int = 0) {
+            if (depth > 3) return
+            val children = dir.listFiles() ?: return
+            if (children.isEmpty()) {
+                emptyDirs.add(
+                    FileItem(
+                        file = dir,
+                        name = dir.name,
+                        path = dir.path,
+                        size = 0L,
+                        isDirectory = true,
+                        lastModified = dir.lastModified()
+                    )
+                )
+                return
+            }
+
+            children.take(60).forEach { file ->
                 if (file.isDirectory) {
-                    scanDir(file)
+                    scanDir(file, depth + 1)
                 } else {
                     val size = file.length()
                     val cat = getFileCategory(file)
@@ -290,13 +316,15 @@ Marketing,0,0,0
             }
         }
 
-        scanDir(sampleDataDir)
+        scanRoots.forEach { scanDir(it) }
 
         val categoryStats = catCounts.map { (cat, data) ->
             CategoryStat(category = cat, fileCount = data.first, totalBytes = data.second)
         }.filter { it.category != FileCategory.ALL }
 
-        val largeFiles = allFiles.sortedByDescending { it.size }.take(10)
+        val largeFiles = allFiles.filter { it.size > 15L * 1024 * 1024 }
+            .sortedByDescending { it.size }.take(20)
+
         val oldestFiles = allFiles.sortedBy { it.lastModified }.take(10)
 
         // Find duplicates by size + name
@@ -308,10 +336,29 @@ Marketing,0,0,0
             usedStorageBytes = usedBytes,
             freeStorageBytes = (totalBytes - usedBytes).coerceAtLeast(0L),
             categoryStats = categoryStats,
-            largeFiles = largeFiles,
+            largeFiles = if (largeFiles.isNotEmpty()) largeFiles else allFiles.sortedByDescending { it.size }.take(10),
             duplicateCandidates = duplicates,
             oldestFiles = oldestFiles
         )
+    }
+
+    suspend fun cleanAppCache(): Long = withContext(Dispatchers.IO) {
+        var reclaimed = 0L
+        val cacheDirs = listOfNotNull(context.cacheDir, context.externalCacheDir)
+        cacheDirs.forEach { cDir ->
+            cDir.listFiles()?.forEach { file ->
+                reclaimed += if (file.isDirectory) calculateDirectorySize(file) else file.length()
+                file.deleteRecursively()
+            }
+        }
+        auditLogDao.insertLog(
+            AuditLogEntity(
+                action = "CLEAN_CACHE",
+                target = "App Cache",
+                details = "Cleaned ${FileItem.formatFileSize(reclaimed)} of temporary data"
+            )
+        )
+        reclaimed
     }
 
     suspend fun createDirectory(parentPath: String, name: String): Boolean = withContext(Dispatchers.IO) {
@@ -419,7 +466,7 @@ Marketing,0,0,0
     suspend fun restoreFromTrash(trashId: String): Boolean = withContext(Dispatchers.IO) {
         val matched = trashDir.listFiles()?.firstOrNull { it.name.startsWith(trashId) } ?: return@withContext false
         val originalName = matched.name.substringAfter("${trashId}_")
-        val target = File(sampleDataDir, originalName)
+        val target = File(getPrimaryStorageRoot(), originalName)
         if (matched.renameTo(target)) {
             trashDao.deleteTrash(trashId)
             auditLogDao.insertLog(
@@ -468,7 +515,7 @@ Marketing,0,0,0
                 }
                 count++
             } catch (e: Exception) {
-                // ignore failed
+                // Ignore failure
             }
         }
         if (count > 0) {
@@ -544,7 +591,6 @@ Marketing,0,0,0
                 var entry = zis.nextEntry
                 while (entry != null) {
                     val newFile = File(outDir, entry.name)
-                    // Protect against Zip Slip vulnerability
                     if (!newFile.canonicalPath.startsWith(outDir.canonicalPath)) {
                         throw SecurityException("Zip Slip detected: ${entry.name}")
                     }
@@ -566,6 +612,21 @@ Marketing,0,0,0
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    fun openWithExternalApp(file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            val mime = getMimeType(file)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // No app found or permission error
         }
     }
 
@@ -615,7 +676,7 @@ Marketing,0,0,0
 
     fun calculateDirectorySize(dir: File): Long {
         var size = 0L
-        dir.listFiles()?.forEach { file ->
+        dir.listFiles()?.take(50)?.forEach { file ->
             size += if (file.isDirectory) calculateDirectorySize(file) else file.length()
         }
         return size
@@ -627,8 +688,8 @@ Marketing,0,0,0
             "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg" -> FileCategory.IMAGES
             "mp4", "mkv", "mov", "avi", "3gp", "webm" -> FileCategory.VIDEOS
             "mp3", "flac", "wav", "m4a", "ogg", "aac", "mid" -> FileCategory.AUDIO
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "xml", "kt", "html" -> FileCategory.DOCUMENTS
-            "zip", "rar", "7z", "tar", "gz", "bz2" -> FileCategory.ARCHIVES
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "xml", "kt", "html", "epub" -> FileCategory.DOCUMENTS
+            "zip", "rar", "7z", "tar", "gz", "bz2", "xz" -> FileCategory.ARCHIVES
             "apk", "xapk", "apks" -> FileCategory.APKS
             else -> FileCategory.ALL
         }
@@ -639,6 +700,7 @@ Marketing,0,0,0
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: when (ext) {
             "md", "kt", "csv" -> "text/plain"
             "json" -> "application/json"
+            "apk" -> "application/vnd.android.package-archive"
             else -> "*/*"
         }
     }

@@ -32,6 +32,10 @@ enum class ViewLayout {
     LIST, GRID, COMPACT
 }
 
+enum class ClipboardOp {
+    COPY, CUT
+}
+
 data class FileTag(
     val tag: String,
     val colorHex: String

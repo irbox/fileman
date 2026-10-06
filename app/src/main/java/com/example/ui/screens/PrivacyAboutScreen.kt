@@ -133,7 +133,7 @@ fun PrivacyAboutScreen(
                             Text("Dark Theme", fontWeight = FontWeight.Medium)
                             Switch(
                                 checked = isDark,
-                                onCheckedChange = { viewModel.isDarkMode.value = it }
+                                onCheckedChange = { viewModel.setDarkMode(it) }
                             )
                         }
 
@@ -150,7 +150,7 @@ fun PrivacyAboutScreen(
                                     val selected = currentStyle == style
                                     FilterChip(
                                         selected = selected,
-                                        onClick = { viewModel.darkThemeStyle.value = style },
+                                        onClick = { viewModel.setDarkThemeStyle(style) },
                                         label = { Text(style.displayName, fontSize = 11.sp) },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -179,7 +179,7 @@ fun PrivacyAboutScreen(
                                             color = if (selected) Color.White else Color.Transparent,
                                             shape = RoundedCornerShape(8.dp)
                                         )
-                                        .clickable { viewModel.accentChoice.value = accent },
+                                        .clickable { viewModel.setAccentChoice(accent) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (selected) {

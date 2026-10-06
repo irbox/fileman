@@ -188,6 +188,58 @@ fun StorageAnalyzerScreen(
                     }
                 }
 
+                // Smart System Cache & Junk Cleaner Card
+                item {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = LibreEmerald.copy(alpha = 0.12f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(LibreEmerald.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CleaningServices,
+                                    contentDescription = null,
+                                    tint = LibreEmerald,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "System Cache & Temp Junk",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Optimize disk and purge app cache",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.cleanAppCache() },
+                                colors = ButtonDefaults.buttonColors(containerColor = LibreEmerald),
+                                modifier = Modifier.testTag("clean_cache_button")
+                            ) {
+                                Text("Optimize", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 // Category Breakdown
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -244,7 +296,7 @@ fun StorageAnalyzerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 3.dp)
-                                .clickable { viewModel.computeChecksums(file) }
+                                .clickable { viewModel.openFile(file) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

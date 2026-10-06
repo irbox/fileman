@@ -5,14 +5,12 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +48,8 @@ fun ExplorerScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.explorerState.collectAsState()
+    val clipboardItems by viewModel.clipboardItems.collectAsState()
+    val clipboardOp by viewModel.clipboardOp.collectAsState()
 
     var showSearchBar by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -60,7 +62,7 @@ fun ExplorerScreen(
     var itemToRename by remember { mutableStateOf<FileItem?>(null) }
     var newRenameName by remember { mutableStateOf("") }
 
-    // Back button handling
+    // Back button handling: navigate up directory tree before exiting
     BackHandler(enabled = state.isSelectionMode || state.breadcrumbs.size > 1) {
         if (state.isSelectionMode) {
             viewModel.clearSelection()
@@ -81,7 +83,7 @@ fun ExplorerScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = { viewModel.clearSelection() }) {
@@ -90,11 +92,17 @@ fun ExplorerScreen(
                         Text(
                             text = "${state.selectedFiles.size} selected",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = { viewModel.selectAll() }) {
                             Icon(Icons.Default.SelectAll, contentDescription = "Select All")
+                        }
+                        IconButton(onClick = { viewModel.copySelectedToClipboard() }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
+                        }
+                        IconButton(onClick = { viewModel.cutSelectedToClipboard() }) {
+                            Icon(Icons.Default.ContentCut, contentDescription = "Move")
                         }
                         IconButton(
                             onClick = { showBatchRenameDialog = true },
@@ -228,7 +236,7 @@ fun ExplorerScreen(
                             }
                         }
 
-                        // Search and Filter Bar with Quick Filter Pills
+                        // Search and Filter Bar
                         AnimatedVisibility(visible = showSearchBar) {
                             Column(
                                 modifier = Modifier
@@ -250,11 +258,7 @@ fun ExplorerScreen(
                                                     )
                                                 }
                                             ) {
-                                                Text(
-                                                    text = ".*",
-                                                    fontWeight = if (state.filterCriteria.isRegexSearch) FontWeight.ExtraBold else FontWeight.Normal,
-                                                    color = if (state.filterCriteria.isRegexSearch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                                )
+                                                Text(if (state.filterCriteria.isRegexSearch) ".* (On)" else ".*", fontSize = 11.sp)
                                             }
                                             if (state.filterCriteria.searchQuery.isNotEmpty()) {
                                                 IconButton(onClick = { viewModel.updateSearchQuery("") }) {
@@ -265,33 +269,8 @@ fun ExplorerScreen(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .testTag("explorer_search_input")
+                                        .testTag("file_search_input")
                                 )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Quick Category Filter Row
-                                val quickCategories = listOf(
-                                    FileCategory.ALL,
-                                    FileCategory.DOCUMENTS,
-                                    FileCategory.IMAGES,
-                                    FileCategory.AUDIO,
-                                    FileCategory.ARCHIVES
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    quickCategories.forEach { cat ->
-                                        FilterChip(
-                                            selected = state.filterCriteria.selectedCategory == cat,
-                                            onClick = { viewModel.openCategory(cat) },
-                                            label = { Text(cat.title, fontSize = 11.sp) }
-                                        )
-                                    }
-                                }
                             }
                         }
 
@@ -358,137 +337,146 @@ fun ExplorerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Clipboard paste banner if items are in clipboard
+                if (clipboardItems.isNotEmpty() && clipboardOp != null) {
+                    PasteClipboardBar(
+                        items = clipboardItems,
+                        operation = clipboardOp!!,
+                        onPaste = { viewModel.pasteClipboard() },
+                        onCancel = { viewModel.cancelClipboard() }
+                    )
                 }
-            } else if (state.currentFiles.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.FolderOpen,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "This folder is empty",
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                if (state.isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                }
-            } else {
-                when (state.viewLayout) {
-                    ViewLayout.LIST -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 96.dp)
-                        ) {
-                            items(state.currentFiles, key = { it.path }) { item ->
-                                val isSelected = item.path in state.selectedFiles
-                                FileListItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isSelectionMode = state.isSelectionMode,
-                                    onClick = {
-                                        if (state.isSelectionMode) {
-                                            viewModel.toggleSelection(item.path)
-                                        } else {
-                                            if (item.isDirectory) {
-                                                viewModel.navigateToDirectory(item.path)
-                                            } else if (item.extension.lowercase() in listOf("txt", "md", "json", "csv", "xml", "kt", "log")) {
-                                                viewModel.openTextEditor(item)
-                                            } else if (item.extension.lowercase() == "zip") {
-                                                viewModel.extractZip(item)
-                                            } else {
-                                                viewModel.computeChecksums(item)
-                                            }
-                                        }
-                                    },
-                                    onLongClick = {
-                                        viewModel.toggleSelection(item.path)
-                                    },
-                                    onActionClick = { action ->
-                                        when (action) {
-                                            "rename" -> {
-                                                itemToRename = item
-                                                newRenameName = item.name
-                                            }
-                                            "details" -> viewModel.computeChecksums(item)
-                                            "edit" -> viewModel.openTextEditor(item)
-                                            "zip" -> viewModel.createZipArchive(item)
-                                            "delete" -> {
+                } else if (state.currentFiles.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "This folder is empty",
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    when (state.viewLayout) {
+                        ViewLayout.LIST -> {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 96.dp)
+                            ) {
+                                items(state.currentFiles, key = { it.path }) { item ->
+                                    val isSelected = item.path in state.selectedFiles
+                                    FileListItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = state.isSelectionMode,
+                                        onClick = {
+                                            if (state.isSelectionMode) {
                                                 viewModel.toggleSelection(item.path)
-                                                viewModel.deleteSelected(permanent = false)
+                                            } else {
+                                                viewModel.openFile(item)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleSelection(item.path)
+                                        },
+                                        onActionClick = { action ->
+                                            when (action) {
+                                                "open_system" -> {
+                                                    val f = item.file ?: File(item.path)
+                                                    viewModel.fileRepository.openWithExternalApp(f)
+                                                }
+                                                "copy" -> {
+                                                    viewModel.toggleSelection(item.path)
+                                                    viewModel.copySelectedToClipboard()
+                                                }
+                                                "cut" -> {
+                                                    viewModel.toggleSelection(item.path)
+                                                    viewModel.cutSelectedToClipboard()
+                                                }
+                                                "rename" -> {
+                                                    itemToRename = item
+                                                    newRenameName = item.name
+                                                }
+                                                "details" -> viewModel.showFileDetails(item)
+                                                "share" -> viewModel.shareFile(item)
+                                                "edit" -> viewModel.openTextEditor(item)
+                                                "zip" -> {
+                                                    viewModel.toggleSelection(item.path)
+                                                    showBatchZipDialog = true
+                                                }
+                                                "vault" -> viewModel.importFileToVault(item)
+                                                "delete" -> {
+                                                    viewModel.toggleSelection(item.path)
+                                                    viewModel.deleteSelected(permanent = false)
+                                                }
                                             }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
-                    }
-                    ViewLayout.GRID -> {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(3),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 96.dp, top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(state.currentFiles, key = { it.path }) { item ->
-                                val isSelected = item.path in state.selectedFiles
-                                FileGridItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isSelectionMode = state.isSelectionMode,
-                                    onClick = {
-                                        if (state.isSelectionMode) {
-                                            viewModel.toggleSelection(item.path)
-                                        } else {
-                                            if (item.isDirectory) {
-                                                viewModel.navigateToDirectory(item.path)
-                                            } else if (item.extension.lowercase() in listOf("txt", "md", "json", "csv", "xml", "kt", "log")) {
-                                                viewModel.openTextEditor(item)
-                                            } else if (item.extension.lowercase() == "zip") {
-                                                viewModel.extractZip(item)
+                        ViewLayout.GRID -> {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 96.dp, top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(state.currentFiles, key = { it.path }) { item ->
+                                    val isSelected = item.path in state.selectedFiles
+                                    FileGridItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = state.isSelectionMode,
+                                        onClick = {
+                                            if (state.isSelectionMode) {
+                                                viewModel.toggleSelection(item.path)
                                             } else {
-                                                viewModel.computeChecksums(item)
+                                                viewModel.openFile(item)
                                             }
-                                        }
-                                    },
-                                    onLongClick = { viewModel.toggleSelection(item.path) }
-                                )
+                                        },
+                                        onLongClick = { viewModel.toggleSelection(item.path) }
+                                    )
+                                }
                             }
                         }
-                    }
-                    ViewLayout.COMPACT -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 96.dp)
-                        ) {
-                            items(state.currentFiles, key = { it.path }) { item ->
-                                val isSelected = item.path in state.selectedFiles
-                                FileCompactItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    onClick = {
-                                        if (state.isSelectionMode) {
-                                            viewModel.toggleSelection(item.path)
-                                        } else {
-                                            if (item.isDirectory) {
-                                                viewModel.navigateToDirectory(item.path)
+                        ViewLayout.COMPACT -> {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 96.dp)
+                            ) {
+                                items(state.currentFiles, key = { it.path }) { item ->
+                                    val isSelected = item.path in state.selectedFiles
+                                    FileCompactItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        onClick = {
+                                            if (state.isSelectionMode) {
+                                                viewModel.toggleSelection(item.path)
                                             } else {
-                                                viewModel.computeChecksums(item)
+                                                viewModel.openFile(item)
                                             }
-                                        }
-                                    },
-                                    onLongClick = { viewModel.toggleSelection(item.path) }
-                                )
+                                        },
+                                        onLongClick = { viewModel.toggleSelection(item.path) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -524,7 +512,7 @@ fun ExplorerScreen(
         CreateZipDialog(
             selectedCount = state.selectedFiles.size,
             onConfirm = { zipName ->
-                viewModel.batchZip(zipName)
+                viewModel.compressSelectedToZip(zipName)
                 showBatchZipDialog = false
             },
             onDismiss = { showBatchZipDialog = false }
@@ -563,13 +551,6 @@ fun ExplorerScreen(
     }
 }
 
-private fun MainViewModel.createZipArchive(item: FileItem) {
-    batchZip("${item.nameWithoutExtension}.zip")
-}
-
-val FileItem.nameWithoutExtension: String
-    get() = if (isDirectory) name else name.substringBeforeLast(".")
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileListItem(
@@ -606,19 +587,31 @@ fun FileListItem(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(color.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(22.dp)
+            val isImage = item.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp") && item.file != null
+            if (isImage) {
+                AsyncImage(
+                    model = item.file,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(14.dp))
@@ -658,11 +651,43 @@ fun FileListItem(
                     onDismissRequest = { menuExpanded = false }
                 ) {
                     DropdownMenuItem(
+                        text = { Text("Open in System App") },
+                        leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onActionClick("open_system")
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Details & Checksum") },
                         leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
                         onClick = {
                             menuExpanded = false
                             onActionClick("details")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Copy") },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onActionClick("copy")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Cut / Move") },
+                        leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onActionClick("cut")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Share") },
+                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onActionClick("share")
                         }
                     )
                     if (!item.isDirectory) {
@@ -672,6 +697,14 @@ fun FileListItem(
                             onClick = {
                                 menuExpanded = false
                                 onActionClick("edit")
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Encrypt to Vault") },
+                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = LibreIndigo) },
+                            onClick = {
+                                menuExpanded = false
+                                onActionClick("vault")
                             }
                         )
                     }
@@ -742,19 +775,31 @@ fun FileGridItem(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(color.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(28.dp)
+            val isImage = item.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp") && item.file != null
+            if (isImage) {
+                AsyncImage(
+                    model = item.file,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

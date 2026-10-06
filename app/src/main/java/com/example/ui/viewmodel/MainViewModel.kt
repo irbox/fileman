@@ -1,7 +1,11 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
@@ -9,6 +13,7 @@ import com.example.data.crypto.VaultCrypto
 import com.example.data.db.*
 import com.example.data.model.*
 import com.example.data.repository.FileManagerRepository
+import com.example.data.repository.PreferencesRepository
 import com.example.data.repository.SafRepository
 import com.example.data.repository.VaultRepository
 import com.example.ui.theme.AccentChoice
@@ -16,6 +21,7 @@ import com.example.ui.theme.DarkThemeStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class NavigationScreen(val title: String) {
@@ -53,11 +59,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         application,
         AppDatabase::class.java,
         "libre_files.db"
-    ).build()
+    ).fallbackToDestructiveMigration().build()
 
     val fileRepository = FileManagerRepository(application, database)
     val safRepository = SafRepository(application)
     val vaultRepository = VaultRepository(application, database)
+    val preferencesRepository = PreferencesRepository(application)
 
     // Navigation
     private val _currentScreen = MutableStateFlow(NavigationScreen.DASHBOARD)
@@ -77,17 +84,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _recentFiles = MutableStateFlow<List<FileItem>>(emptyList())
     val recentFiles: StateFlow<List<FileItem>> = _recentFiles.asStateFlow()
 
+    // Permission state
+    val hasStoragePermission = MutableStateFlow(fileRepository.hasAllFilesAccess())
+
     // Vault State
     private val _vaultState = MutableStateFlow(VaultUiState())
     val vaultState: StateFlow<VaultUiState> = _vaultState.asStateFlow()
+
+    // Clipboard (Copy / Cut / Paste)
+    private val _clipboardItems = MutableStateFlow<List<FileItem>>(emptyList())
+    val clipboardItems: StateFlow<List<FileItem>> = _clipboardItems.asStateFlow()
+
+    private val _clipboardOp = MutableStateFlow<ClipboardOp?>(null)
+    val clipboardOp: StateFlow<ClipboardOp?> = _clipboardOp.asStateFlow()
 
     // Active Dialogs & Viewers
     var activeTextEditorFile: FileItem? = null
     val textEditorContent = MutableStateFlow("")
 
-    var activeImagePreviewFile: FileItem? = null
-    var activeAudioFile: FileItem? = null
+    val activeImagePreviewFile = MutableStateFlow<FileItem?>(null)
+    val activeZipFile = MutableStateFlow<FileItem?>(null)
+
+    // Audio Player
+    val activeAudioFile = MutableStateFlow<FileItem?>(null)
     val isAudioPlaying = MutableStateFlow(false)
+    private var mediaPlayer: MediaPlayer? = null
 
     var activeDetailsFile: FileItem? = null
     val activeFileChecksums = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -97,14 +118,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val darkThemeStyle = MutableStateFlow(DarkThemeStyle.SLATE)
     val accentChoice = MutableStateFlow(AccentChoice.CYAN)
 
-    // Root directory
-    private val defaultRoot: File by lazy {
-        File(application.filesDir, "Local_Storage").apply { if (!exists()) mkdirs() }
-    }
+    val defaultRoot: File
+        get() = fileRepository.getPrimaryStorageRoot()
 
     init {
         viewModelScope.launch {
-            fileRepository.initializeSampleFilesIfEmpty()
+            checkStoragePermissions()
             refreshStorageVolumes()
             refreshVaultStatus()
             navigateToDirectory(defaultRoot.path)
@@ -117,6 +136,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             vaultRepository.vaultItems.collect { list ->
                 _vaultState.update { it.copy(items = list) }
             }
+        }
+
+        // Collect persisted DataStore preferences
+        viewModelScope.launch {
+            preferencesRepository.userPreferencesFlow.collect { prefs ->
+                isDarkMode.value = prefs.isDarkMode
+                darkThemeStyle.value = prefs.darkThemeStyle
+                accentChoice.value = prefs.accentChoice
+                _explorerState.update {
+                    it.copy(
+                        viewLayout = prefs.viewLayout,
+                        sortOption = SortOption(prefs.sortField, prefs.sortDirection),
+                        filterCriteria = it.filterCriteria.copy(showHidden = prefs.showHiddenFiles)
+                    )
+                }
+            }
+        }
+    }
+
+    fun setDarkMode(enabled: Boolean) {
+        isDarkMode.value = enabled
+        viewModelScope.launch { preferencesRepository.setDarkMode(enabled) }
+    }
+
+    fun setDarkThemeStyle(style: DarkThemeStyle) {
+        darkThemeStyle.value = style
+        viewModelScope.launch { preferencesRepository.setDarkThemeStyle(style) }
+    }
+
+    fun setAccentChoice(choice: AccentChoice) {
+        accentChoice.value = choice
+        viewModelScope.launch { preferencesRepository.setAccentChoice(choice) }
+    }
+
+    fun checkStoragePermissions() {
+        val hasPerm = fileRepository.hasAllFilesAccess()
+        val prev = hasStoragePermission.value
+        hasStoragePermission.value = hasPerm
+        if (!prev && hasPerm) {
+            onPermissionGranted()
+        }
+    }
+
+    fun onPermissionGranted() {
+        viewModelScope.launch {
+            refreshStorageVolumes()
+            navigateToDirectory(defaultRoot.path)
+            refreshStorageAnalysis()
+            loadRecentFiles()
+        }
+    }
+
+    fun requestManageStorage() {
+        try {
+            val intent = fileRepository.getManageStorageIntent()
+            getApplication<Application>().startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback to system settings
         }
     }
 
@@ -138,25 +215,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadRecentFiles() {
+    fun loadRecentFiles() {
         viewModelScope.launch {
-            val all = fileRepository.listFiles(defaultRoot.path)
-            val sub = mutableListOf<FileItem>()
-            defaultRoot.walkTopDown().maxDepth(3).filter { it.isFile }.take(15).forEach { f ->
-                sub.add(
-                    FileItem(
-                        file = f,
-                        name = f.name,
-                        path = f.path,
-                        size = f.length(),
-                        isDirectory = false,
-                        lastModified = f.lastModified(),
-                        extension = f.extension.lowercase(),
-                        mimeType = fileRepository.getMimeType(f)
-                    )
-                )
-            }
-            _recentFiles.value = sub.sortedByDescending { it.lastModified }.take(8)
+            _recentFiles.value = fileRepository.getRecentFiles()
         }
     }
 
@@ -172,7 +233,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Build breadcrumbs
             val rootPath = defaultRoot.path
             val breadcrumbs = mutableListOf<Pair<String, String>>()
-            breadcrumbs.add(Pair("Root", rootPath))
+            breadcrumbs.add(Pair("Storage", rootPath))
 
             if (path != rootPath && path.startsWith(rootPath)) {
                 val rel = path.removePrefix(rootPath).trim('/')
@@ -185,7 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } else if (path != rootPath) {
-                breadcrumbs.add(Pair(File(path).name, path))
+                breadcrumbs.add(Pair(File(path).name.ifEmpty { "Folder" }, path))
             }
 
             _explorerState.update {
@@ -195,6 +256,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isLoading = false
                 )
             }
+        }
+    }
+
+    fun refreshCurrentDirectory() {
+        val curr = _explorerState.value.currentPath
+        if (curr.isNotEmpty()) {
+            navigateToDirectory(curr)
+        } else {
+            navigateToDirectory(defaultRoot.path)
         }
     }
 
@@ -214,7 +284,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _explorerState.update {
                 it.copy(
                     filterCriteria = it.filterCriteria.copy(selectedCategory = category),
-                    isLoading = true
+                    isLoading = true,
+                    selectedFiles = emptySet(),
+                    isSelectionMode = false
                 )
             }
             if (category == FileCategory.ALL) {
@@ -224,7 +296,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _explorerState.update {
                     it.copy(
                         currentFiles = catFiles,
-                        breadcrumbs = listOf(Pair("Root", defaultRoot.path), Pair(category.title, "")),
+                        breadcrumbs = listOf(Pair("Storage", defaultRoot.path), Pair(category.title, "")),
                         isLoading = false
                     )
                 }
@@ -241,201 +313,419 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSortOption(sortOption: SortOption) {
         _explorerState.update { it.copy(sortOption = sortOption) }
+        viewModelScope.launch { preferencesRepository.setSortOption(sortOption.field, sortOption.direction) }
         refreshCurrentDirectory()
     }
 
+    fun setViewLayout(layout: ViewLayout) {
+        _explorerState.update { it.copy(viewLayout = layout) }
+        viewModelScope.launch { preferencesRepository.setViewLayout(layout) }
+    }
+
     fun toggleViewLayout() {
-        _explorerState.update {
-            val next = when (it.viewLayout) {
-                ViewLayout.LIST -> ViewLayout.GRID
-                ViewLayout.GRID -> ViewLayout.COMPACT
-                ViewLayout.COMPACT -> ViewLayout.LIST
-            }
-            it.copy(viewLayout = next)
+        val next = when (_explorerState.value.viewLayout) {
+            ViewLayout.LIST -> ViewLayout.GRID
+            ViewLayout.GRID -> ViewLayout.COMPACT
+            ViewLayout.COMPACT -> ViewLayout.LIST
         }
+        _explorerState.update { it.copy(viewLayout = next) }
+        viewModelScope.launch { preferencesRepository.setViewLayout(next) }
     }
 
     fun toggleSelection(path: String) {
-        _explorerState.update {
-            val newSet = it.selectedFiles.toMutableSet()
-            if (newSet.contains(path)) newSet.remove(path) else newSet.add(path)
-            it.copy(
-                selectedFiles = newSet,
-                isSelectionMode = newSet.isNotEmpty()
-            )
+        _explorerState.update { current ->
+            val set = current.selectedFiles.toMutableSet()
+            if (set.contains(path)) set.remove(path) else set.add(path)
+            current.copy(selectedFiles = set, isSelectionMode = set.isNotEmpty())
         }
     }
 
     fun selectAll() {
-        val allPaths = _explorerState.value.currentFiles.map { it.path }.toSet()
-        _explorerState.update {
-            it.copy(selectedFiles = allPaths, isSelectionMode = true)
+        _explorerState.update { current ->
+            val allPaths = current.currentFiles.map { it.path }.toSet()
+            current.copy(selectedFiles = allPaths, isSelectionMode = allPaths.isNotEmpty())
         }
     }
 
     fun clearSelection() {
-        _explorerState.update {
-            it.copy(selectedFiles = emptySet(), isSelectionMode = false)
+        _explorerState.update { it.copy(selectedFiles = emptySet(), isSelectionMode = false) }
+    }
+
+    // Clipboard Copy / Cut / Paste
+    fun copySelectedToClipboard() {
+        val selected = getSelectedFileItems()
+        if (selected.isNotEmpty()) {
+            _clipboardItems.value = selected
+            _clipboardOp.value = ClipboardOp.COPY
+            clearSelection()
+            _explorerState.update { it.copy(statusMessage = "Copied ${selected.size} items to clipboard") }
         }
     }
 
-    fun refreshCurrentDirectory() {
-        val curr = _explorerState.value.currentPath
-        if (curr.isNotEmpty()) {
-            navigateToDirectory(curr)
+    fun cutSelectedToClipboard() {
+        val selected = getSelectedFileItems()
+        if (selected.isNotEmpty()) {
+            _clipboardItems.value = selected
+            _clipboardOp.value = ClipboardOp.CUT
+            clearSelection()
+            _explorerState.update { it.copy(statusMessage = "Ready to move ${selected.size} items") }
         }
     }
 
-    // File Actions
+    fun cancelClipboard() {
+        _clipboardItems.value = emptyList()
+        _clipboardOp.value = null
+    }
+
+    fun pasteClipboard() {
+        val targetPath = _explorerState.value.currentPath
+        val items = _clipboardItems.value
+        val op = _clipboardOp.value ?: return
+        if (items.isEmpty() || targetPath.isEmpty()) return
+
+        viewModelScope.launch {
+            _explorerState.update { it.copy(isLoading = true) }
+            val count = if (op == ClipboardOp.COPY) {
+                fileRepository.batchCopy(items, targetPath)
+            } else {
+                fileRepository.batchMove(items, targetPath)
+            }
+            _clipboardItems.value = emptyList()
+            _clipboardOp.value = null
+            _explorerState.update {
+                it.copy(
+                    isLoading = false,
+                    statusMessage = if (op == ClipboardOp.COPY) "Copied $count items" else "Moved $count items"
+                )
+            }
+            refreshCurrentDirectory()
+        }
+    }
+
+    fun getSelectedFileItems(): List<FileItem> {
+        val selected = _explorerState.value.selectedFiles
+        return _explorerState.value.currentFiles.filter { selected.contains(it.path) }
+    }
+
     fun createFolder(name: String) {
         viewModelScope.launch {
-            val success = fileRepository.createDirectory(_explorerState.value.currentPath, name)
-            if (success) refreshCurrentDirectory()
+            val curr = _explorerState.value.currentPath
+            if (curr.isNotEmpty()) {
+                fileRepository.createDirectory(curr, name)
+                refreshCurrentDirectory()
+            }
         }
     }
 
     fun createNewFile(name: String, content: String = "") {
         viewModelScope.launch {
-            val success = fileRepository.createFile(_explorerState.value.currentPath, name, content)
-            if (success) refreshCurrentDirectory()
+            val curr = _explorerState.value.currentPath
+            if (curr.isNotEmpty()) {
+                fileRepository.createFile(curr, name, content)
+                refreshCurrentDirectory()
+            }
         }
     }
 
     fun renameFile(oldPath: String, newName: String) {
         viewModelScope.launch {
-            val success = fileRepository.renameFile(oldPath, newName)
-            if (success) refreshCurrentDirectory()
+            fileRepository.renameFile(oldPath, newName)
+            refreshCurrentDirectory()
+        }
+    }
+
+    fun batchRename(prefix: String, suffix: String, find: String, replace: String, numbering: Boolean) {
+        viewModelScope.launch {
+            val items = getSelectedFileItems()
+            if (items.isNotEmpty()) {
+                fileRepository.batchRename(items, prefix, suffix, find, replace, numbering)
+                clearSelection()
+                refreshCurrentDirectory()
+            }
         }
     }
 
     fun deleteSelected(permanent: Boolean = false) {
         viewModelScope.launch {
-            val items = _explorerState.value.currentFiles.filter { it.path in _explorerState.value.selectedFiles }
-            if (permanent) {
-                fileRepository.deletePermanently(items)
-            } else {
-                fileRepository.moveToTrash(items)
+            val items = getSelectedFileItems()
+            if (items.isNotEmpty()) {
+                if (permanent) {
+                    fileRepository.deletePermanently(items)
+                } else {
+                    fileRepository.moveToTrash(items)
+                }
+                clearSelection()
+                refreshCurrentDirectory()
+                refreshStorageAnalysis()
             }
-            clearSelection()
+        }
+    }
+
+    fun restoreFromTrash(trashId: String) {
+        viewModelScope.launch {
+            fileRepository.restoreFromTrash(trashId)
             refreshCurrentDirectory()
             refreshStorageAnalysis()
         }
     }
 
-    fun batchRename(prefix: String, suffix: String, findText: String, replaceText: String, sequentialNumbering: Boolean) {
+    fun emptyTrash() {
         viewModelScope.launch {
-            val items = _explorerState.value.currentFiles.filter { it.path in _explorerState.value.selectedFiles }
-            fileRepository.batchRename(items, prefix, suffix, findText, replaceText, sequentialNumbering)
-            clearSelection()
+            fileRepository.emptyTrash()
+            refreshStorageAnalysis()
+        }
+    }
+
+    fun cleanAppCache() {
+        viewModelScope.launch {
+            val reclaimed = fileRepository.cleanAppCache()
+            _explorerState.update {
+                it.copy(statusMessage = "Optimized ${FileItem.formatFileSize(reclaimed)} of cache & junk")
+            }
+            refreshStorageAnalysis()
+        }
+    }
+
+    fun compressSelectedToZip(zipName: String) {
+        viewModelScope.launch {
+            val items = getSelectedFileItems()
+            val curr = _explorerState.value.currentPath
+            if (items.isNotEmpty() && curr.isNotEmpty()) {
+                fileRepository.createZipArchive(items, zipName, curr)
+                clearSelection()
+                refreshCurrentDirectory()
+            }
+        }
+    }
+
+    fun extractZip(zipFile: FileItem) {
+        val target = _explorerState.value.currentPath
+        val file = zipFile.file ?: return
+        viewModelScope.launch {
+            _explorerState.update { it.copy(isLoading = true) }
+            val ok = fileRepository.extractZipArchive(file, target)
+            _explorerState.update {
+                it.copy(
+                    isLoading = false,
+                    statusMessage = if (ok) "Extracted ${file.name}" else "Extraction failed"
+                )
+            }
             refreshCurrentDirectory()
         }
     }
 
-    fun batchZip(zipName: String) {
-        viewModelScope.launch {
-            val items = _explorerState.value.currentFiles.filter { it.path in _explorerState.value.selectedFiles }
-            fileRepository.createZipArchive(items, zipName, _explorerState.value.currentPath)
-            clearSelection()
-            refreshCurrentDirectory()
+    // Opening Files
+    fun openFile(fileItem: FileItem) {
+        if (fileItem.isDirectory) {
+            navigateToDirectory(fileItem.path)
+            return
+        }
+
+        val ext = fileItem.extension.lowercase()
+        when (ext) {
+            "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg" -> {
+                activeImagePreviewFile.value = fileItem
+            }
+            "mp3", "flac", "wav", "m4a", "ogg", "aac", "mid" -> {
+                playAudio(fileItem)
+            }
+            "txt", "md", "json", "xml", "kt", "java", "csv", "html", "css", "js", "log", "py", "sh" -> {
+                openTextEditor(fileItem)
+            }
+            "zip" -> {
+                activeZipFile.value = fileItem
+            }
+            "apk" -> {
+                installApk(fileItem)
+            }
+            else -> {
+                val f = fileItem.file ?: File(fileItem.path)
+                if (f.exists()) {
+                    fileRepository.openWithExternalApp(f)
+                }
+            }
         }
     }
 
-    fun extractZip(item: FileItem) {
-        viewModelScope.launch {
-            val file = item.file ?: return@launch
-            val outDir = File(file.parentFile, file.nameWithoutExtension)
-            fileRepository.extractZipArchive(file, outDir.path)
-            refreshCurrentDirectory()
+    fun installApk(fileItem: FileItem) {
+        val file = fileItem.file ?: File(fileItem.path)
+        if (!file.exists()) return
+        try {
+            val app = getApplication<Application>()
+            val uri = FileProvider.getUriForFile(app, "${app.packageName}.provider", file)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            app.startActivity(intent)
+        } catch (e: Exception) {
+            _explorerState.update { it.copy(statusMessage = "Cannot launch package installer: ${e.message}") }
         }
     }
 
-    fun computeChecksums(item: FileItem) {
-        activeDetailsFile = item
-        viewModelScope.launch(Dispatchers.IO) {
-            val file = item.file ?: return@launch
-            val md5 = VaultCrypto.calculateChecksum(file, "MD5")
-            val sha1 = VaultCrypto.calculateChecksum(file, "SHA-1")
-            val sha256 = VaultCrypto.calculateChecksum(file, "SHA-256")
-            activeFileChecksums.value = mapOf(
-                "MD5" to md5,
-                "SHA-1" to sha1,
-                "SHA-256" to sha256
-            )
+    // Audio Player Controls
+    fun playAudio(item: FileItem) {
+        try {
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer().apply {
+                if (item.file != null && item.file.exists()) {
+                    setDataSource(item.file.path)
+                } else if (item.uri != null) {
+                    setDataSource(getApplication(), item.uri)
+                } else {
+                    setDataSource(item.path)
+                }
+                prepare()
+                start()
+                setOnCompletionListener {
+                    isAudioPlaying.value = false
+                }
+            }
+            activeAudioFile.value = item
+            isAudioPlaying.value = true
+        } catch (e: Exception) {
+            _explorerState.update { it.copy(statusMessage = "Could not play audio: ${e.message}") }
         }
     }
 
-    fun openTextEditor(item: FileItem) {
-        activeTextEditorFile = item
-        viewModelScope.launch {
-            val file = item.file ?: return@launch
-            textEditorContent.value = fileRepository.readTextContent(file)
+    fun toggleAudioPlayback() {
+        mediaPlayer?.let { player ->
+            if (player.isPlaying) {
+                player.pause()
+                isAudioPlaying.value = false
+            } else {
+                player.start()
+                isAudioPlaying.value = true
+            }
+        }
+    }
+
+    fun stopAudio() {
+        mediaPlayer?.stop()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        activeAudioFile.value = null
+        isAudioPlaying.value = false
+    }
+
+    // Text Editor
+    fun openTextEditor(fileItem: FileItem) {
+        val file = fileItem.file ?: File(fileItem.path)
+        if (file.exists()) {
+            activeTextEditorFile = fileItem
+            viewModelScope.launch {
+                textEditorContent.value = fileRepository.readTextContent(file)
+            }
         }
     }
 
     fun saveTextEditor(newContent: String) {
+        val file = activeTextEditorFile?.file ?: return
         viewModelScope.launch {
-            val file = activeTextEditorFile?.file ?: return@launch
             fileRepository.writeTextContent(file, newContent)
             activeTextEditorFile = null
             refreshCurrentDirectory()
         }
     }
 
-    // Vault actions
-    fun refreshVaultStatus() {
-        val configured = vaultRepository.isVaultConfigured()
-        _vaultState.update { it.copy(isConfigured = configured) }
+    // Details & Checksum calculation
+    fun showFileDetails(fileItem: FileItem) {
+        activeDetailsFile = fileItem
+        activeFileChecksums.value = emptyMap()
+        viewModelScope.launch {
+            val file = fileItem.file ?: File(fileItem.path)
+            if (file.exists() && file.isFile) {
+                val md5 = withContext(Dispatchers.IO) { VaultCrypto.calculateChecksum(file, "MD5") }
+                val sha1 = withContext(Dispatchers.IO) { VaultCrypto.calculateChecksum(file, "SHA-1") }
+                val sha256 = withContext(Dispatchers.IO) { VaultCrypto.calculateChecksum(file, "SHA-256") }
+                activeFileChecksums.value = mapOf(
+                    "MD5" to md5,
+                    "SHA-1" to sha1,
+                    "SHA-256" to sha256
+                )
+            }
+        }
     }
 
-    fun setupVaultPasscode(passcode: String): Boolean {
-        val success = vaultRepository.setupVaultPasscode(passcode)
-        if (success) {
+    // Share File
+    fun shareFile(fileItem: FileItem) {
+        val file = fileItem.file ?: File(fileItem.path)
+        if (!file.exists()) return
+        try {
+            val app = getApplication<Application>()
+            val uri = FileProvider.getUriForFile(app, "${app.packageName}.provider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = fileItem.mimeType.ifEmpty { "*/*" }
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, "Share ${fileItem.name}").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            app.startActivity(chooser)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    // Secure Vault Operations
+    fun refreshVaultStatus() {
+        val configured = vaultRepository.isVaultConfigured()
+        val unlocked = _vaultState.value.isUnlocked
+        _vaultState.update { it.copy(isConfigured = configured, isUnlocked = unlocked) }
+    }
+
+    fun setupVaultPasscode(passcode: String) {
+        val ok = vaultRepository.setupVaultPasscode(passcode)
+        if (ok) {
             _vaultState.update {
                 it.copy(isConfigured = true, isUnlocked = true, currentPasscode = passcode, errorMessage = null)
             }
+        } else {
+            _vaultState.update { it.copy(errorMessage = "Failed to initialize vault") }
         }
-        return success
     }
 
-    fun unlockVault(passcode: String): Boolean {
-        val valid = vaultRepository.verifyPasscode(passcode)
-        if (valid) {
+    fun unlockVault(passcode: String) {
+        val success = vaultRepository.verifyPasscode(passcode)
+        if (success) {
             _vaultState.update {
                 it.copy(isUnlocked = true, currentPasscode = passcode, errorMessage = null)
             }
-            return true
         } else {
-            _vaultState.update { it.copy(errorMessage = "Incorrect Passcode") }
-            return false
+            _vaultState.update { it.copy(errorMessage = "Incorrect passcode") }
         }
     }
 
     fun lockVault() {
-        _vaultState.update {
-            it.copy(isUnlocked = false, currentPasscode = "", errorMessage = null)
+        _vaultState.update { it.copy(isUnlocked = false, currentPasscode = "") }
+    }
+
+    fun importFileToVault(fileItem: FileItem) {
+        val file = fileItem.file ?: File(fileItem.path)
+        val passcode = _vaultState.value.currentPasscode
+        if (file.exists() && passcode.isNotEmpty()) {
+            viewModelScope.launch {
+                vaultRepository.encryptFileToVault(file, passcode, deleteOriginal = true)
+                refreshCurrentDirectory()
+            }
         }
     }
 
-    fun encryptSelectedToVault() {
+    fun exportVaultItem(item: VaultItemEntity, targetDir: String) {
         val passcode = _vaultState.value.currentPasscode
-        if (passcode.isEmpty()) return
-        viewModelScope.launch {
-            val items = _explorerState.value.currentFiles.filter { it.path in _explorerState.value.selectedFiles }
-            for (item in items) {
-                val f = item.file ?: continue
-                vaultRepository.encryptFileToVault(f, passcode, deleteOriginal = true)
+        if (passcode.isNotEmpty()) {
+            viewModelScope.launch {
+                vaultRepository.decryptFileFromVault(item.id, File(targetDir), passcode)
+                refreshCurrentDirectory()
             }
-            clearSelection()
-            refreshCurrentDirectory()
         }
     }
 
     fun decryptVaultItem(item: VaultItemEntity) {
-        val passcode = _vaultState.value.currentPasscode
-        if (passcode.isEmpty()) return
-        viewModelScope.launch {
-            vaultRepository.decryptFileFromVault(item.id, defaultRoot, passcode)
-        }
+        exportVaultItem(item, defaultRoot.path)
     }
 
     fun deleteVaultItem(item: VaultItemEntity) {
@@ -444,17 +734,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // SAF actions
+    // SAF Document Tree
     fun handleSafTreeSelected(uri: Uri) {
-        safRepository.takePersistablePermissions(uri)
-        refreshStorageVolumes()
+        viewModelScope.launch {
+            safRepository.takePersistablePermissions(uri)
+            refreshStorageVolumes()
+        }
     }
 
-    // Trash actions
-    fun emptyTrash() {
-        viewModelScope.launch {
-            fileRepository.emptyTrash()
-            refreshStorageAnalysis()
-        }
+    override fun onCleared() {
+        super.onCleared()
+        stopAudio()
     }
 }

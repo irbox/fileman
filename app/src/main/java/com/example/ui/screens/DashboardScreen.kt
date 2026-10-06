@@ -23,11 +23,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.model.FileCategory
 import com.example.data.model.FileItem
 import com.example.data.model.StorageVolume
@@ -47,13 +49,17 @@ fun DashboardScreen(
     val storageVolumes by viewModel.storageVolumes.collectAsState()
     val recentFiles by viewModel.recentFiles.collectAsState()
     val vaultState by viewModel.vaultState.collectAsState()
-    val analysisResult by viewModel.storageAnalysis.collectAsState()
+    val hasPermission by viewModel.hasStoragePermission.collectAsState()
 
     // SAF Tree Picker Launcher
     val safPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         uri?.let { viewModel.handleSafTreeSelected(it) }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.checkStoragePermissions()
     }
 
     LazyColumn(
@@ -67,6 +73,51 @@ fun DashboardScreen(
             DashboardHeader(
                 onSettingsClick = { viewModel.navigateToScreen(NavigationScreen.SETTINGS) }
             )
+        }
+
+        // Storage Permission Alert if needed
+        if (!hasPermission) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderShared,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "All Files Access",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Grant permission to browse and manage your device storage, Downloads, and SD card.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { viewModel.requestManageStorage() },
+                            modifier = Modifier.testTag("grant_permission_button")
+                        ) {
+                            Text("Grant", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
         }
 
         // Storage Overview Cards
@@ -99,7 +150,6 @@ fun DashboardScreen(
                             volume = volume,
                             onClick = {
                                 if (volume.treeUri != null) {
-                                    // SAF tree
                                     viewModel.navigateToScreen(NavigationScreen.EXPLORER)
                                 } else {
                                     viewModel.navigateToDirectory(volume.path)
@@ -185,7 +235,7 @@ fun DashboardScreen(
             }
         }
 
-        // Recent Files Section
+        // Recent Files Section with Real Image Thumbnails
         item {
             Spacer(modifier = Modifier.height(20.dp))
             Text(
@@ -223,11 +273,7 @@ fun DashboardScreen(
                         RecentFileRow(
                             item = fileItem,
                             onClick = {
-                                if (fileItem.extension.lowercase() in listOf("txt", "md", "json", "csv", "xml", "kt")) {
-                                    viewModel.openTextEditor(fileItem)
-                                } else {
-                                    viewModel.computeChecksums(fileItem)
-                                }
+                                viewModel.openFile(fileItem)
                             }
                         )
                     }
@@ -376,7 +422,7 @@ fun StorageVolumeCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "${volume.formattedFree} free of ${volume.formattedTotal}",
+                    text = "${volume.formattedFree} free",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -554,6 +600,7 @@ fun RecentFileRow(
     onClick: () -> Unit
 ) {
     val (icon, iconColor) = getFileIconAndColor(item)
+    val isImage = item.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp") && item.file != null
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -567,12 +614,31 @@ fun RecentFileRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(22.dp)
-            )
+            if (isImage) {
+                AsyncImage(
+                    model = item.file,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(iconColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
