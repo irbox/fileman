@@ -50,3 +50,9 @@ data class AuditLogEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val details: String = ""
 )
+
+@Entity(tableName = "search_history")
+data class SearchQueryEntity(
+    @PrimaryKey val query: String,
+    val timestamp: Long = System.currentTimeMillis()
+)

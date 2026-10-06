@@ -27,6 +27,7 @@ import java.io.File
 enum class NavigationScreen(val title: String) {
     DASHBOARD("Home"),
     EXPLORER("Files"),
+    RECENT("Recent Files"),
     ANALYZER("Analyze"),
     VAULT("Vault"),
     SETTINGS("Privacy & About")
@@ -67,6 +68,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val safRepository = SafRepository(application)
     val vaultRepository = VaultRepository(application, database)
     val preferencesRepository = PreferencesRepository(application)
+    val searchHistoryDao = database.searchHistoryDao()
+
+    // Persistent Search History from Room
+    val searchHistory: StateFlow<List<SearchQueryEntity>> = searchHistoryDao.getRecentQueries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Navigation
     private val _currentScreen = MutableStateFlow(NavigationScreen.DASHBOARD)
@@ -310,12 +316,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _explorerState.update {
             it.copy(filterCriteria = it.filterCriteria.copy(searchQuery = query, isRegexSearch = isRegex))
         }
+        if (query.isNotBlank() && query.trim().length >= 2) {
+            viewModelScope.launch {
+                searchHistoryDao.insertQuery(SearchQueryEntity(query.trim()))
+            }
+        }
         refreshCurrentDirectory()
+    }
+
+    fun recordSearchQuery(query: String) {
+        if (query.isNotBlank()) {
+            viewModelScope.launch {
+                searchHistoryDao.insertQuery(SearchQueryEntity(query.trim()))
+            }
+        }
+    }
+
+    fun deleteSearchQuery(query: String) {
+        viewModelScope.launch {
+            searchHistoryDao.deleteQuery(query)
+        }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch {
+            searchHistoryDao.clearHistory()
+        }
     }
 
     fun setSortOption(sortOption: SortOption) {
         _explorerState.update { it.copy(sortOption = sortOption) }
         viewModelScope.launch { preferencesRepository.setSortOption(sortOption.field, sortOption.direction) }
+        refreshCurrentDirectory()
+    }
+
+    fun toggleShowHiddenFiles() {
+        val current = _explorerState.value.filterCriteria.showHidden
+        val newShow = !current
+        _explorerState.update {
+            it.copy(filterCriteria = it.filterCriteria.copy(showHidden = newShow))
+        }
+        viewModelScope.launch { preferencesRepository.setShowHiddenFiles(newShow) }
+        refreshCurrentDirectory()
+    }
+
+    fun setShowHiddenFiles(show: Boolean) {
+        _explorerState.update {
+            it.copy(filterCriteria = it.filterCriteria.copy(showHidden = show))
+        }
+        viewModelScope.launch { preferencesRepository.setShowHiddenFiles(show) }
         refreshCurrentDirectory()
     }
 
@@ -493,10 +542,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val items = getSelectedFileItems()
             val curr = _explorerState.value.currentPath
             if (items.isNotEmpty() && curr.isNotEmpty()) {
-                fileRepository.createZipArchive(items, zipName, curr)
+                val created = fileRepository.createZipArchive(items, zipName, curr)
                 clearSelection()
+                _explorerState.update {
+                    it.copy(statusMessage = if (created != null) "Compressed to ${created.name}" else "Compression failed")
+                }
                 refreshCurrentDirectory()
             }
+        }
+    }
+
+    fun compressSingleFile(item: FileItem, format: String = "zip", onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val file = item.file ?: File(item.path)
+            val parentDir = file.parent ?: _explorerState.value.currentPath
+            val cleanName = if (file.name.contains(".")) file.nameWithoutExtension else file.name
+            val destArchiveName = "$cleanName.$format"
+            val created = fileRepository.createZipArchive(listOf(item), destArchiveName, parentDir)
+            _explorerState.update {
+                it.copy(statusMessage = if (created != null) "Created $destArchiveName" else "Compression failed")
+            }
+            refreshCurrentDirectory()
+            onComplete()
         }
     }
 

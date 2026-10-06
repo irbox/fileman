@@ -169,6 +169,66 @@ fun DashboardScreen(
             }
         }
 
+        // Quick Actions Section (1-tap access to recent files, modified images, downloads)
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Quick Actions",
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                QuickActionCard(
+                    title = "Recent Files",
+                    subtitle = "${recentFiles.size} items",
+                    icon = Icons.Default.History,
+                    containerColor = LibreCyan.copy(alpha = 0.12f),
+                    contentColor = LibreCyan,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_action_recent_files"),
+                    onClick = {
+                        viewModel.navigateToScreen(NavigationScreen.RECENT)
+                    }
+                )
+
+                QuickActionCard(
+                    title = "Recent Images",
+                    subtitle = "Photos & Media",
+                    icon = Icons.Default.Image,
+                    containerColor = ColorImage.copy(alpha = 0.12f),
+                    contentColor = ColorImage,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_action_recent_images"),
+                    onClick = {
+                        viewModel.openCategory(FileCategory.IMAGES)
+                    }
+                )
+
+                QuickActionCard(
+                    title = "Downloads",
+                    subtitle = "Saved Files",
+                    icon = Icons.Default.Download,
+                    containerColor = LibreEmerald.copy(alpha = 0.12f),
+                    contentColor = LibreEmerald,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("quick_action_downloads"),
+                    onClick = {
+                        viewModel.openCategory(FileCategory.DOWNLOADS)
+                    }
+                )
+            }
+        }
+
         // Quick Category Grid (CX File Explorer Style)
         item {
             Spacer(modifier = Modifier.height(20.dp))
@@ -238,12 +298,25 @@ fun DashboardScreen(
         // Recent Files Section with Real Image Thumbnails
         item {
             Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                text = "Recent Files",
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Recent Files",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+                TextButton(
+                    onClick = { viewModel.navigateToScreen(NavigationScreen.RECENT) },
+                    modifier = Modifier.testTag("see_all_recent_btn")
+                ) {
+                    Text("See All", fontSize = 13.sp)
+                }
+            }
 
             if (recentFiles.isEmpty()) {
                 Surface(
@@ -659,6 +732,65 @@ fun RecentFileRow(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun QuickActionCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(containerColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = contentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

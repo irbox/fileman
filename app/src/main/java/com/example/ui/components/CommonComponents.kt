@@ -843,3 +843,479 @@ fun SelectionBottomBar(
         }
     }
 }
+
+// -------------------------------------------------------------
+// Sort & Hidden Files Bottom Sheet Menu
+// -------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SortOptionsBottomSheet(
+    currentSortOption: com.example.data.model.SortOption,
+    showHiddenFiles: Boolean,
+    onSortSelected: (com.example.data.model.SortField, com.example.data.model.SortDirection) -> Unit,
+    onToggleShowHidden: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .testTag("sort_bottom_sheet")
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Sort & View Options",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "SORT BY",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Sort Options List
+            val sortConfigs = listOf(
+                Triple("Name (A to Z)", com.example.data.model.SortField.NAME, com.example.data.model.SortDirection.ASCENDING),
+                Triple("Name (Z to A)", com.example.data.model.SortField.NAME, com.example.data.model.SortDirection.DESCENDING),
+                Triple("Size (Largest first)", com.example.data.model.SortField.SIZE, com.example.data.model.SortDirection.DESCENDING),
+                Triple("Size (Smallest first)", com.example.data.model.SortField.SIZE, com.example.data.model.SortDirection.ASCENDING),
+                Triple("Last Modified (Newest first)", com.example.data.model.SortField.DATE, com.example.data.model.SortDirection.DESCENDING),
+                Triple("Last Modified (Oldest first)", com.example.data.model.SortField.DATE, com.example.data.model.SortDirection.ASCENDING)
+            )
+
+            sortConfigs.forEach { (label, field, direction) ->
+                val isSelected = currentSortOption.field == field && currentSortOption.direction == direction
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            onSortSelected(field, direction)
+                            onDismiss()
+                        }
+                        .testTag("sort_option_${field.name}_${direction.name}")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                onSortSelected(field, direction)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = label,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = "SYSTEM VISIBILITY",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onToggleShowHidden() }
+                    .testTag("toggle_hidden_files_row")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (showHiddenFiles) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = if (showHiddenFiles) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = "Show hidden files",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Files and folders beginning with a dot (\".\")",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = showHiddenFiles,
+                        onCheckedChange = { onToggleShowHidden() },
+                        modifier = Modifier.testTag("show_hidden_files_switch")
+                    )
+                }
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// File Metadata & Preview Bottom Sheet Modal
+// -------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FileMetadataBottomSheet(
+    item: FileItem,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onShare: () -> Unit,
+    onOpen: () -> Unit,
+    onCompress: (String) -> Unit = {}
+) {
+    val (icon, color) = getFileIconAndColor(item)
+    val isImage = item.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp", "gif", "bmp") && (item.file != null || item.uri != null)
+    val dateStr = SimpleDateFormat("MMMM dd, yyyy  'at'  hh:mm a", Locale.getDefault()).format(Date(item.lastModified))
+    var showFormatDialog by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .testTag("file_metadata_bottom_sheet")
+        ) {
+            // Header with Close
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "File Details & Actions",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Thumbnail Preview Hero
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(170.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isImage) {
+                        AsyncImage(
+                            model = item.file ?: item.uri,
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(16.dp))
+                        )
+                    } else {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(68.dp)
+                                    .clip(CircleShape)
+                                    .background(color.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = color,
+                                    modifier = Modifier.size(38.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = if (item.extension.isNotBlank()) item.extension.uppercase() else if (item.isDirectory) "DIRECTORY" else "FILE",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = color
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // File Name
+            Text(
+                text = item.name,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Metadata Attributes Card
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MetadataRow(label = "Path", value = item.path)
+                    MetadataRow(label = "Size", value = if (item.isDirectory) "${item.itemCount} items" else "${item.formattedSize} (${item.size} bytes)")
+                    MetadataRow(label = "Extension", value = if (item.extension.isNotEmpty()) ".${item.extension}" else if (item.isDirectory) "Folder" else "None")
+                    MetadataRow(label = "Modified", value = dateStr)
+                    if (item.mimeType.isNotBlank() && item.mimeType != "*/*") {
+                        MetadataRow(label = "MIME Type", value = item.mimeType)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Action Buttons: Compress, Rename, Share, Open
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showFormatDialog = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("metadata_compress_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Archive,
+                        contentDescription = "Compress",
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("ZIP", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onRename()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("metadata_rename_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DriveFileRenameOutline,
+                        contentDescription = "Rename",
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Rename", fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onShare()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("metadata_share_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Share", fontSize = 12.sp)
+                }
+
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onOpen()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("metadata_open_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = "Open",
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Open", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+
+    if (showFormatDialog) {
+        var selectedFormat by remember { mutableStateOf("zip") }
+        AlertDialog(
+            onDismissRequest = { showFormatDialog = false },
+            title = { Text("Compress Archive") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Select archive format for background compression:", fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val formats = listOf(
+                        Pair("ZIP Standard (.zip)", "zip"),
+                        Pair("TAR Container (.tar)", "tar"),
+                        Pair("Compressed GZIP (.tar.gz)", "tar.gz"),
+                        Pair("7-Zip Container (.7z)", "7z")
+                    )
+                    formats.forEach { (name, ext) ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedFormat == ext) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedFormat = ext }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = selectedFormat == ext, onClick = { selectedFormat = ext })
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(name, fontSize = 13.sp, fontWeight = if (selectedFormat == ext) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showFormatDialog = false
+                        onDismiss()
+                        onCompress(selectedFormat)
+                    },
+                    modifier = Modifier.testTag("confirm_format_compress_button")
+                ) {
+                    Text("Compress")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFormatDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun MetadataRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(76.dp)
+        )
+        Text(
+            text = value,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}

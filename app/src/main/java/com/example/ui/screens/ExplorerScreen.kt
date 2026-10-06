@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import com.example.data.model.*
 import com.example.ui.components.*
 import com.example.ui.theme.LibreCyan
@@ -52,6 +57,8 @@ fun ExplorerScreen(
     val clipboardOp by viewModel.clipboardOp.collectAsState()
 
     var showSortMenu by remember { mutableStateOf(false) }
+    var showSortBottomSheet by remember { mutableStateOf(false) }
+    var metadataItemForSheet by remember { mutableStateOf<FileItem?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var isCreatingFolder by remember { mutableStateOf(true) }
     var showBatchRenameDialog by remember { mutableStateOf(false) }
@@ -61,6 +68,8 @@ fun ExplorerScreen(
 
     // Real-time Top App Bar Search Query & Filter
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchFocused by remember { mutableStateOf(false) }
+    val searchHistory by viewModel.searchHistory.collectAsState()
 
     val displayedFiles = remember(state.currentFiles, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -196,7 +205,15 @@ fun ExplorerScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp)
-                                    .testTag("file_search_input")
+                                    .onFocusChanged { isSearchFocused = it.isFocused }
+                                    .testTag("file_search_input"),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = {
+                                    if (searchQuery.isNotBlank()) {
+                                        viewModel.recordSearchQuery(searchQuery)
+                                    }
+                                    isSearchFocused = false
+                                })
                             )
 
                             Spacer(modifier = Modifier.width(4.dp))
@@ -212,63 +229,88 @@ fun ExplorerScreen(
                                 )
                             }
 
-                            Box {
-                                IconButton(onClick = { showSortMenu = true }) {
-                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort Options")
-                                }
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Name (A to Z)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.NAME, SortDirection.ASCENDING))
-                                            showSortMenu = false
+                            IconButton(
+                                onClick = { showSortBottomSheet = true },
+                                modifier = Modifier.testTag("open_sort_bottom_sheet_button")
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort and View Options")
+                            }
+                        }
+
+                        // Persistent Search History Suggestions Dropdown
+                        AnimatedVisibility(
+                            visible = isSearchFocused && searchHistory.isNotEmpty(),
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 6.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .testTag("search_history_suggestions")
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Recent Searches",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        TextButton(
+                                            onClick = { viewModel.clearSearchHistory() },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                        ) {
+                                            Text("Clear all", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                                         }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Name (Z to A)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.NAME, SortDirection.DESCENDING))
-                                            showSortMenu = false
+                                    }
+                                    searchHistory.take(5).forEach { historyItem ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    searchQuery = historyItem.query
+                                                    viewModel.recordSearchQuery(historyItem.query)
+                                                    isSearchFocused = false
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.History,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = historyItem.query,
+                                                fontSize = 13.sp,
+                                                modifier = Modifier.weight(1f),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            IconButton(
+                                                onClick = { viewModel.deleteSearchQuery(historyItem.query) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Remove query",
+                                                    tint = MaterialTheme.colorScheme.outline,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
                                         }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Date (Newest First)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.DATE, SortDirection.DESCENDING))
-                                            showSortMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Date (Oldest First)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.DATE, SortDirection.ASCENDING))
-                                            showSortMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Size (Largest First)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.SIZE, SortDirection.DESCENDING))
-                                            showSortMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Size (Smallest First)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.SIZE, SortDirection.ASCENDING))
-                                            showSortMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Type (Extension)") },
-                                        onClick = {
-                                            viewModel.setSortOption(SortOption(SortField.TYPE, SortDirection.ASCENDING))
-                                            showSortMenu = false
-                                        }
-                                    )
+                                    }
                                 }
                             }
                         }
@@ -448,7 +490,11 @@ fun ExplorerScreen(
                                             }
                                         },
                                         onLongClick = {
-                                            viewModel.toggleSelection(item.path)
+                                            if (state.isSelectionMode) {
+                                                viewModel.toggleSelection(item.path)
+                                            } else {
+                                                metadataItemForSheet = item
+                                            }
                                         },
                                         onActionClick = { action ->
                                             when (action) {
@@ -468,7 +514,9 @@ fun ExplorerScreen(
                                                     itemToRename = item
                                                     newRenameName = item.name
                                                 }
-                                                "details" -> viewModel.showFileDetails(item)
+                                                "details" -> {
+                                                    metadataItemForSheet = item
+                                                }
                                                 "share" -> viewModel.shareFile(item)
                                                 "edit" -> viewModel.openTextEditor(item)
                                                 "zip" -> {
@@ -507,7 +555,13 @@ fun ExplorerScreen(
                                                 viewModel.openFile(item)
                                             }
                                         },
-                                        onLongClick = { viewModel.toggleSelection(item.path) }
+                                        onLongClick = {
+                                            if (state.isSelectionMode) {
+                                                viewModel.toggleSelection(item.path)
+                                            } else {
+                                                metadataItemForSheet = item
+                                            }
+                                        }
                                     )
                                 }
                             }
@@ -529,7 +583,13 @@ fun ExplorerScreen(
                                                 viewModel.openFile(item)
                                             }
                                         },
-                                        onLongClick = { viewModel.toggleSelection(item.path) }
+                                        onLongClick = {
+                                            if (state.isSelectionMode) {
+                                                viewModel.toggleSelection(item.path)
+                                            } else {
+                                                metadataItemForSheet = item
+                                            }
+                                        }
                                     )
                                 }
                             }
@@ -601,6 +661,42 @@ fun ExplorerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { itemToRename = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Sort & View Options Bottom Sheet Modal
+    if (showSortBottomSheet) {
+        SortOptionsBottomSheet(
+            currentSortOption = state.sortOption,
+            showHiddenFiles = state.filterCriteria.showHidden,
+            onSortSelected = { field, direction ->
+                viewModel.setSortOption(SortOption(field, direction))
+            },
+            onToggleShowHidden = {
+                viewModel.toggleShowHiddenFiles()
+            },
+            onDismiss = { showSortBottomSheet = false }
+        )
+    }
+
+    // File Metadata & Preview Bottom Sheet Modal
+    metadataItemForSheet?.let { targetItem ->
+        FileMetadataBottomSheet(
+            item = targetItem,
+            onDismiss = { metadataItemForSheet = null },
+            onRename = {
+                itemToRename = targetItem
+                newRenameName = targetItem.name
+            },
+            onShare = {
+                viewModel.shareFile(targetItem)
+            },
+            onOpen = {
+                viewModel.openFile(targetItem)
+            },
+            onCompress = { format ->
+                viewModel.compressSingleFile(targetItem, format)
             }
         )
     }

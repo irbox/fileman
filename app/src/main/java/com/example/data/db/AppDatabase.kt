@@ -84,15 +84,31 @@ interface AuditLogDao {
     suspend fun clearLogs()
 }
 
+@Dao
+interface SearchHistoryDao {
+    @Query("SELECT * FROM search_history ORDER BY timestamp DESC LIMIT 20")
+    fun getRecentQueries(): Flow<List<SearchQueryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuery(item: SearchQueryEntity)
+
+    @Query("DELETE FROM search_history WHERE `query` = :query")
+    suspend fun deleteQuery(query: String)
+
+    @Query("DELETE FROM search_history")
+    suspend fun clearHistory()
+}
+
 @Database(
     entities = [
         BookmarkEntity::class,
         VaultItemEntity::class,
         FileTagEntity::class,
         TrashItemEntity::class,
-        AuditLogEntity::class
+        AuditLogEntity::class,
+        SearchQueryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -101,4 +117,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fileTagDao(): FileTagDao
     abstract fun trashDao(): TrashDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun searchHistoryDao(): SearchHistoryDao
 }

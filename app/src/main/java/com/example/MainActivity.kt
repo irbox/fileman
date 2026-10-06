@@ -46,6 +46,7 @@ import androidx.fragment.app.FragmentActivity
 object NavRoutes {
     const val DASHBOARD = "dashboard"
     const val EXPLORER = "explorer"
+    const val RECENT = "recent"
     const val ANALYZER = "analyzer"
     const val VAULT = "vault"
     const val SETTINGS = "settings"
@@ -111,6 +112,7 @@ fun MainAppContent(viewModel: MainViewModel) {
         val targetRoute = when (currentScreen) {
             NavigationScreen.DASHBOARD -> NavRoutes.DASHBOARD
             NavigationScreen.EXPLORER -> NavRoutes.EXPLORER
+            NavigationScreen.RECENT -> NavRoutes.RECENT
             NavigationScreen.ANALYZER -> NavRoutes.ANALYZER
             NavigationScreen.VAULT -> NavRoutes.VAULT
             NavigationScreen.SETTINGS -> NavRoutes.SETTINGS
@@ -406,6 +408,9 @@ fun MainAppContent(viewModel: MainViewModel) {
                         }
                         composable(NavRoutes.EXPLORER) {
                             ExplorerScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.RECENT) {
+                            RecentFilesScreen(viewModel = viewModel)
                         }
                         composable(NavRoutes.ANALYZER) {
                             StorageAnalyticsScreen(viewModel = viewModel)
