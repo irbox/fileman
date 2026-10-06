@@ -750,3 +750,96 @@ fun CreateZipDialog(
         }
     )
 }
+
+// Multi-Select Contextual Bottom Action Bar
+@Composable
+fun SelectionBottomBar(
+    selectedCount: Int,
+    onDelete: () -> Unit,
+    onMove: () -> Unit,
+    onShare: () -> Unit,
+    onCopy: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 8.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("selection_bottom_bar")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Share
+            TextButton(
+                onClick = onShare,
+                modifier = Modifier.testTag("selection_share_button")
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Share", fontSize = 11.sp)
+                }
+            }
+
+            // Move (Cut to clipboard)
+            TextButton(
+                onClick = onMove,
+                modifier = Modifier.testTag("selection_move_button")
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.DriveFileMove,
+                        contentDescription = "Move",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Move", fontSize = 11.sp)
+                }
+            }
+
+            // Copy
+            TextButton(
+                onClick = onCopy,
+                modifier = Modifier.testTag("selection_copy_button")
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Copy", fontSize = 11.sp)
+                }
+            }
+
+            // Delete
+            TextButton(
+                onClick = onDelete,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.testTag("selection_delete_button")
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Delete", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}

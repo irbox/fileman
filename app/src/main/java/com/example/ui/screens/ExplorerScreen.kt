@@ -51,12 +51,25 @@ fun ExplorerScreen(
     val clipboardItems by viewModel.clipboardItems.collectAsState()
     val clipboardOp by viewModel.clipboardOp.collectAsState()
 
-    var showSearchBar by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var isCreatingFolder by remember { mutableStateOf(true) }
     var showBatchRenameDialog by remember { mutableStateOf(false) }
     var showBatchZipDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var deletePermanently by remember { mutableStateOf(false) }
+
+    // Real-time Top App Bar Search Query & Filter
+    var searchQuery by remember { mutableStateOf("") }
+
+    val displayedFiles = remember(state.currentFiles, searchQuery) {
+        if (searchQuery.isBlank()) {
+            state.currentFiles
+        } else {
+            val q = searchQuery.trim()
+            state.currentFiles.filter { it.name.contains(q, ignoreCase = true) }
+        }
+    }
 
     // Rename single item dialog
     var itemToRename by remember { mutableStateOf<FileItem?>(null) }
@@ -67,6 +80,7 @@ fun ExplorerScreen(
         if (state.isSelectionMode) {
             viewModel.clearSelection()
         } else {
+            searchQuery = ""
             viewModel.navigateUp()
         }
     }
@@ -117,7 +131,7 @@ fun ExplorerScreen(
                             Icon(Icons.Default.Archive, contentDescription = "Compress to ZIP")
                         }
                         IconButton(
-                            onClick = { viewModel.deleteSelected(permanent = false) },
+                            onClick = { showBatchDeleteConfirmDialog = true },
                             modifier = Modifier.testTag("batch_delete_icon_button")
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
@@ -125,7 +139,7 @@ fun ExplorerScreen(
                     }
                 }
             } else {
-                // Standard Explorer Top Bar
+                // Standard Explorer Top Bar with integrated Scaffold top search bar
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.fillMaxWidth()
@@ -134,35 +148,58 @@ fun ExplorerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(
-                                onClick = { viewModel.navigateUp() },
+                                onClick = {
+                                    searchQuery = ""
+                                    viewModel.navigateUp()
+                                },
                                 enabled = state.breadcrumbs.size > 1
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Navigate Up")
                             }
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Files",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp
-                                )
-                                Text(
-                                    text = "${state.currentFiles.size} items in directory",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            // Real-time Search Bar directly in Scaffold Top App Bar
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text("Search files...", fontSize = 13.sp) },
+                                singleLine = true,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Clear,
+                                                contentDescription = "Clear search",
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(24.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                                ),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("file_search_input")
+                            )
 
-                            IconButton(onClick = { showSearchBar = !showSearchBar }) {
-                                Icon(
-                                    imageVector = if (showSearchBar) Icons.Default.SearchOff else Icons.Default.Search,
-                                    contentDescription = "Toggle Search"
-                                )
-                            }
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             IconButton(onClick = { viewModel.toggleViewLayout() }) {
                                 Icon(
@@ -236,98 +273,96 @@ fun ExplorerScreen(
                             }
                         }
 
-                        // Search and Filter Bar
-                        AnimatedVisibility(visible = showSearchBar) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = state.filterCriteria.searchQuery,
-                                    onValueChange = { viewModel.updateSearchQuery(it, state.filterCriteria.isRegexSearch) },
-                                    placeholder = { Text("Search files or regex...") },
-                                    singleLine = true,
-                                    trailingIcon = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            TextButton(
-                                                onClick = {
-                                                    viewModel.updateSearchQuery(
-                                                        state.filterCriteria.searchQuery,
-                                                        !state.filterCriteria.isRegexSearch
-                                                    )
-                                                }
-                                            ) {
-                                                Text(if (state.filterCriteria.isRegexSearch) ".* (On)" else ".*", fontSize = 11.sp)
-                                            }
-                                            if (state.filterCriteria.searchQuery.isNotEmpty()) {
-                                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                                                }
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("file_search_input")
-                                )
-                            }
-                        }
-
                         // Breadcrumb Navigation Bar
                         BreadcrumbBar(
                             breadcrumbs = state.breadcrumbs,
                             onBreadcrumbClick = { path ->
-                                if (path.isNotEmpty()) viewModel.navigateToDirectory(path)
+                                if (path.isNotEmpty()) {
+                                    searchQuery = ""
+                                    viewModel.navigateToDirectory(path)
+                                }
                             }
                         )
                     }
                 }
             }
         },
+        bottomBar = {
+            if (state.isSelectionMode) {
+                SelectionBottomBar(
+                    selectedCount = state.selectedFiles.size,
+                    onDelete = { showBatchDeleteConfirmDialog = true },
+                    onMove = { viewModel.cutSelectedToClipboard() },
+                    onShare = { viewModel.shareSelectedFiles() },
+                    onCopy = { viewModel.copySelectedToClipboard() },
+                    onCancel = { viewModel.clearSelection() }
+                )
+            }
+        },
         floatingActionButton = {
-            var fabExpanded by remember { mutableStateOf(false) }
+            if (state.isSelectionMode) {
+                ExtendedFloatingActionButton(
+                    onClick = { showBatchDeleteConfirmDialog = true },
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Bulk Delete"
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "Delete (${state.selectedFiles.size})",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    modifier = Modifier.testTag("bulk_delete_fab")
+                )
+            } else {
+                var fabExpanded by remember { mutableStateOf(false) }
 
-            Column(horizontalAlignment = Alignment.End) {
-                if (fabExpanded) {
-                    FloatingActionButton(
-                        onClick = {
-                            fabExpanded = false
-                            isCreatingFolder = false
-                            showCreateDialog = true
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        modifier = Modifier
-                            .padding(bottom = 8.dp)
-                            .testTag("create_file_fab")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = "New File")
+                Column(horizontalAlignment = Alignment.End) {
+                    if (fabExpanded) {
+                        FloatingActionButton(
+                            onClick = {
+                                fabExpanded = false
+                                isCreatingFolder = false
+                                showCreateDialog = true
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .testTag("create_file_fab")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = "New File")
+                        }
+
+                        FloatingActionButton(
+                            onClick = {
+                                fabExpanded = false
+                                isCreatingFolder = true
+                                showCreateDialog = true
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .testTag("create_folder_fab")
+                        ) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
+                        }
                     }
 
                     FloatingActionButton(
-                        onClick = {
-                            fabExpanded = false
-                            isCreatingFolder = true
-                            showCreateDialog = true
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        modifier = Modifier
-                            .padding(bottom = 8.dp)
-                            .testTag("create_folder_fab")
+                        onClick = { fabExpanded = !fabExpanded },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("main_explorer_fab")
                     ) {
-                        Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
+                        Icon(
+                            imageVector = if (fabExpanded) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = "Add New"
+                        )
                     }
-                }
-
-                FloatingActionButton(
-                    onClick = { fabExpanded = !fabExpanded },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.testTag("main_explorer_fab")
-                ) {
-                    Icon(
-                        imageVector = if (fabExpanded) Icons.Default.Close else Icons.Default.Add,
-                        contentDescription = "Add New"
-                    )
                 }
             }
         }
@@ -352,24 +387,44 @@ fun ExplorerScreen(
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                } else if (state.currentFiles.isEmpty()) {
+                } else if (displayedFiles.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "This folder is empty",
-                                fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (searchQuery.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.SearchOff,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No files matching \"$searchQuery\"",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TextButton(onClick = { searchQuery = "" }) {
+                                    Text("Clear search")
+                                }
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "This folder is empty",
+                                    fontSize = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 } else {
@@ -379,7 +434,7 @@ fun ExplorerScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 96.dp)
                             ) {
-                                items(state.currentFiles, key = { it.path }) { item ->
+                                items(displayedFiles, key = { it.path }) { item ->
                                     val isSelected = item.path in state.selectedFiles
                                     FileListItem(
                                         item = item,
@@ -439,7 +494,7 @@ fun ExplorerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(state.currentFiles, key = { it.path }) { item ->
+                                items(displayedFiles, key = { it.path }) { item ->
                                     val isSelected = item.path in state.selectedFiles
                                     FileGridItem(
                                         item = item,
@@ -462,7 +517,7 @@ fun ExplorerScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 96.dp)
                             ) {
-                                items(state.currentFiles, key = { it.path }) { item ->
+                                items(displayedFiles, key = { it.path }) { item ->
                                     val isSelected = item.path in state.selectedFiles
                                     FileCompactItem(
                                         item = item,

@@ -22,18 +22,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.model.FileCategory
 import com.example.data.model.FileItem
-import com.example.ui.components.getCategoryIconAndColor
+import com.example.data.repository.DiskCategoryUsage
+import com.example.ui.components.DonutChart
 import com.example.ui.components.getFileIconAndColor
 import com.example.ui.theme.LibreCyan
 import com.example.ui.theme.LibreEmerald
-import com.example.ui.viewmodel.CategoryUsageSegment
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.StorageAnalyticsViewModel
 
 @Composable
-fun StorageAnalyzerScreen(
+fun StorageAnalyticsScreen(
     viewModel: MainViewModel,
     analyticsViewModel: StorageAnalyticsViewModel = viewModel(),
     modifier: Modifier = Modifier
@@ -48,7 +47,10 @@ fun StorageAnalyzerScreen(
 
     Scaffold(
         topBar = {
-            Surface(color = MaterialTheme.colorScheme.surface) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -56,12 +58,24 @@ fun StorageAnalyzerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Storage Analytics",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
-                    IconButton(onClick = { analyticsViewModel.loadStorageAnalytics() }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.PieChart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Storage Analytics",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = { analyticsViewModel.loadStorageAnalytics() },
+                        modifier = Modifier.testTag("refresh_analytics_button")
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Analytics")
                     }
                 }
@@ -82,67 +96,60 @@ fun StorageAnalyzerScreen(
                 modifier = modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .testTag("storage_analyzer_screen"),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("storage_analytics_screen"),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                // Storage Gauge Overview Card
+                // Interactive Donut Chart Card
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("donut_chart_card"),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Disk Space Distribution", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 Text(
-                                    text = "${(state.usedPercentage * 100).toInt()}% Used",
+                                    text = "Disk Usage Breakdown",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Segmented Proportional Chart Bar
-                            MultiSegmentProgressBar(
-                                segments = state.categorySegments,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Used: ${FileItem.formatFileSize(state.usedBytes)}",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontSize = 16.sp
                                 )
                                 Text(
                                     text = "Free: ${FileItem.formatFileSize(state.freeBytes)}",
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Donut Chart visualization
+                            DonutChart(
+                                categories = state.diskCategories,
+                                totalUsedFormatted = FileItem.formatFileSize(state.usedBytes),
+                                usedPercentage = (state.usedPercentage * 100).toInt(),
+                                chartSize = 210.dp,
+                                strokeWidth = 26.dp
+                            )
                         }
                     }
                 }
 
-                // Clean up / Trash bin banner
+                // Recycle Bin Cleanup Card
                 item {
                     Spacer(modifier = Modifier.height(12.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
                     ) {
                         Row(
                             modifier = Modifier
@@ -189,7 +196,7 @@ fun StorageAnalyzerScreen(
                     }
                 }
 
-                // Smart System Cache & Temp Junk Cleaner Card
+                // Cache Cleaner Card
                 item {
                     Spacer(modifier = Modifier.height(10.dp))
                     Card(
@@ -227,7 +234,7 @@ fun StorageAnalyzerScreen(
                                 Text(
                                     text = if (state.reclaimedCacheBytes != null)
                                         "Reclaimed ${FileItem.formatFileSize(state.reclaimedCacheBytes!!)}!"
-                                    else "Optimize disk and purge app cache",
+                                    else "Purge temporary and thumbnail caches",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -243,189 +250,144 @@ fun StorageAnalyzerScreen(
                     }
                 }
 
-                // Category Breakdown
+                // File Type Categories Header
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Category Breakdown", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Text(
+                        text = "File Categories",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                items(state.categorySegments) { segment ->
-                    val (icon, color) = getCategoryIconAndColor(segment.category)
+                // Category Items
+                items(state.diskCategories) { cat ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clickable { viewModel.openCategory(segment.category) }
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(color.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(segment.category.title, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                                    Text("${segment.fileCount} files", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(segment.formattedSize, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text(
-                                        "${(segment.percentageOfUsed * 100).toInt()}%",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Individual Category Usage Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(5.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(MaterialTheme.colorScheme.surface)
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(cat.composeColor.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(fraction = segment.percentageOfUsed.coerceIn(0.01f, 1f))
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(color)
+                                val icon = when (cat.categoryName) {
+                                    "Images" -> Icons.Default.Image
+                                    "Video" -> Icons.Default.VideoLibrary
+                                    "Documents" -> Icons.Default.Description
+                                    else -> Icons.Default.FolderZip
+                                }
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = cat.composeColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = cat.categoryName,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "${cat.fileCount} files",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = cat.formattedSize,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "${(cat.percentageOfUsed * 100).toInt()}% of disk",
+                                    fontSize = 11.sp,
+                                    color = cat.composeColor
                                 )
                             }
                         }
                     }
                 }
 
-                // Largest Files Detector
+                // Largest Files Section
                 if (state.largeFiles.isNotEmpty()) {
                     item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Largest Files", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "Largest Files",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    items(state.largeFiles) { file ->
-                        val (icon, color) = getFileIconAndColor(file)
+                    items(state.largeFiles.take(6)) { fileItem ->
+                        val (icon, color) = getFileIconAndColor(fileItem)
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 3.dp)
-                                .clickable { analyticsViewModel.openFile(file) }
+                                .clickable { analyticsViewModel.openFile(fileItem) }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = color,
+                                    modifier = Modifier.size(22.dp)
+                                )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = file.name,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = file.formattedSize,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = LibreCyan
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Duplicate Candidates
-                if (state.duplicateCandidates.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Duplicate Candidates Found", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("Files sharing the exact same size and name", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
-
-                    items(state.duplicateCandidates) { group ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = "${group.firstOrNull()?.name ?: "File"} (${group.size} copies)",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                                group.forEach { dup ->
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = dup.path,
-                                        fontSize = 11.sp,
+                                        text = fileItem.name,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = fileItem.path,
+                                        fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                Text(
+                                    text = fileItem.formattedSize,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(96.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MultiSegmentProgressBar(
-    segments: List<CategoryUsageSegment>,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(14.dp)
-            .clip(RoundedCornerShape(7.dp))
-            .background(MaterialTheme.colorScheme.surface)
-    ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            if (segments.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.outlineVariant)
-                )
-            } else {
-                segments.forEach { segment ->
-                    val (_, color) = getCategoryIconAndColor(segment.category)
-                    val weight = segment.percentageOfUsed.coerceAtLeast(0.01f)
-                    Box(
-                        modifier = Modifier
-                            .weight(weight)
-                            .fillMaxHeight()
-                            .background(color)
-                    )
                 }
             }
         }

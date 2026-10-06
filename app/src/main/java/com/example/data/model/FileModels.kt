@@ -60,7 +60,27 @@ data class FileItem(
     val formattedSize: String
         get() = formatFileSize(size)
 
+    val sizeBytes: Long
+        get() = size
+
     companion object {
+        fun fromFile(file: java.io.File): FileItem {
+            val ext = file.extension.lowercase()
+            return FileItem(
+                file = file,
+                name = file.name,
+                path = file.path,
+                size = if (file.isDirectory) 0L else file.length(),
+                isDirectory = file.isDirectory,
+                lastModified = file.lastModified(),
+                extension = ext,
+                mimeType = "*/*",
+                isHidden = file.name.startsWith("."),
+                isBookmarked = false,
+                itemCount = if (file.isDirectory) file.listFiles()?.size ?: 0 else 0
+            )
+        }
+
         fun formatFileSize(bytes: Long): String {
             if (bytes <= 0) return "0 B"
             val units = arrayOf("B", "KB", "MB", "GB", "TB")

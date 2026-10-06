@@ -50,7 +50,9 @@ data class VaultUiState(
     val isUnlocked: Boolean = false,
     val items: List<VaultItemEntity> = emptyList(),
     val currentPasscode: String = "",
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isBiometricAvailable: Boolean = false,
+    val isBiometricEnabled: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -670,18 +672,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Share Multiple Selected Files
+    fun shareSelectedFiles() {
+        val selectedPaths = _explorerState.value.selectedFiles.toList()
+        if (selectedPaths.isEmpty()) return
+        val app = getApplication<Application>()
+        val uris = ArrayList<Uri>()
+        for (path in selectedPaths) {
+            val file = File(path)
+            if (file.exists() && file.isFile) {
+                try {
+                    val uri = FileProvider.getUriForFile(app, "${app.packageName}.provider", file)
+                    uris.add(uri)
+                } catch (e: Exception) {
+                    // Ignore individual file provider failure
+                }
+            }
+        }
+        if (uris.isEmpty()) return
+        try {
+            val intent = if (uris.size == 1) {
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_STREAM, uris[0])
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } else {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            val chooser = Intent.createChooser(intent, "Share ${uris.size} files").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            app.startActivity(chooser)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
     // Secure Vault Operations
     fun refreshVaultStatus() {
         val configured = vaultRepository.isVaultConfigured()
         val unlocked = _vaultState.value.isUnlocked
-        _vaultState.update { it.copy(isConfigured = configured, isUnlocked = unlocked) }
+        val bioAvail = com.example.data.crypto.BiometricAuthHelper.isBiometricAvailable(getApplication())
+        val bioEnabled = vaultRepository.isBiometricUnlockEnabled()
+        _vaultState.update {
+            it.copy(
+                isConfigured = configured,
+                isUnlocked = unlocked,
+                isBiometricAvailable = bioAvail,
+                isBiometricEnabled = bioEnabled
+            )
+        }
     }
 
     fun setupVaultPasscode(passcode: String) {
         val ok = vaultRepository.setupVaultPasscode(passcode)
         if (ok) {
+            val bioAvail = com.example.data.crypto.BiometricAuthHelper.isBiometricAvailable(getApplication())
             _vaultState.update {
-                it.copy(isConfigured = true, isUnlocked = true, currentPasscode = passcode, errorMessage = null)
+                it.copy(
+                    isConfigured = true,
+                    isUnlocked = true,
+                    currentPasscode = passcode,
+                    isBiometricAvailable = bioAvail,
+                    isBiometricEnabled = true,
+                    errorMessage = null
+                )
             }
         } else {
             _vaultState.update { it.copy(errorMessage = "Failed to initialize vault") }
@@ -691,11 +753,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun unlockVault(passcode: String) {
         val success = vaultRepository.verifyPasscode(passcode)
         if (success) {
+            val bioAvail = com.example.data.crypto.BiometricAuthHelper.isBiometricAvailable(getApplication())
+            val bioEnabled = vaultRepository.isBiometricUnlockEnabled()
             _vaultState.update {
-                it.copy(isUnlocked = true, currentPasscode = passcode, errorMessage = null)
+                it.copy(
+                    isUnlocked = true,
+                    currentPasscode = passcode,
+                    isBiometricAvailable = bioAvail,
+                    isBiometricEnabled = bioEnabled,
+                    errorMessage = null
+                )
             }
         } else {
             _vaultState.update { it.copy(errorMessage = "Incorrect passcode") }
+        }
+    }
+
+    fun unlockVaultWithBiometrics(onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        val passcode = vaultRepository.getPasscodeFromBiometrics()
+        if (passcode != null) {
+            unlockVault(passcode)
+            onSuccess()
+        } else {
+            val msg = "Biometric credentials not available. Please enter your passcode."
+            _vaultState.update { it.copy(errorMessage = msg) }
+            onError(msg)
+        }
+    }
+
+    fun toggleBiometricUnlock(enabled: Boolean) {
+        if (enabled) {
+            val passcode = _vaultState.value.currentPasscode
+            if (passcode.isNotEmpty()) {
+                val ok = vaultRepository.enableBiometricUnlock(passcode)
+                _vaultState.update { it.copy(isBiometricEnabled = ok) }
+            }
+        } else {
+            vaultRepository.disableBiometricUnlock()
+            _vaultState.update { it.copy(isBiometricEnabled = false) }
         }
     }
 

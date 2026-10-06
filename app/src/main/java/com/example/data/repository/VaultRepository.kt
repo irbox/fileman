@@ -30,8 +30,53 @@ class VaultRepository(
         File(context.filesDir, "vault_auth.bin")
     }
 
+    private val bioSecretFile: File by lazy {
+        File(context.filesDir, "vault_bio_key.bin")
+    }
+
     fun isVaultConfigured(): Boolean {
         return authConfigFile.exists()
+    }
+
+    fun isBiometricUnlockEnabled(): Boolean {
+        return bioSecretFile.exists() && isVaultConfigured()
+    }
+
+    fun enableBiometricUnlock(passcode: String): Boolean {
+        return try {
+            if (!verifyPasscode(passcode)) return false
+            val deviceSecret = context.packageName.toByteArray(Charsets.UTF_8)
+            val encBytes = passcode.toByteArray(Charsets.UTF_8).mapIndexed { i, b ->
+                (b.toInt() xor deviceSecret[i % deviceSecret.size].toInt()).toByte()
+            }.toByteArray()
+            val b64 = Base64.encodeToString(encBytes, Base64.NO_WRAP)
+            bioSecretFile.writeText(b64)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun disableBiometricUnlock() {
+        if (bioSecretFile.exists()) {
+            bioSecretFile.delete()
+        }
+    }
+
+    fun getPasscodeFromBiometrics(): String? {
+        if (!bioSecretFile.exists()) return null
+        return try {
+            val b64 = bioSecretFile.readText()
+            val encBytes = Base64.decode(b64, Base64.NO_WRAP)
+            val deviceSecret = context.packageName.toByteArray(Charsets.UTF_8)
+            val decBytes = encBytes.mapIndexed { i, b ->
+                (b.toInt() xor deviceSecret[i % deviceSecret.size].toInt()).toByte()
+            }.toByteArray()
+            val passcode = String(decBytes, Charsets.UTF_8)
+            if (verifyPasscode(passcode)) passcode else null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun setupVaultPasscode(passcode: String): Boolean {
@@ -41,6 +86,7 @@ class VaultRepository(
             val saltB64 = Base64.encodeToString(salt, Base64.NO_WRAP)
             val hashB64 = Base64.encodeToString(derived, Base64.NO_WRAP)
             authConfigFile.writeText("$saltB64:$hashB64")
+            enableBiometricUnlock(passcode)
             true
         } catch (e: Exception) {
             false

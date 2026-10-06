@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -21,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.crypto.BiometricAuthHelper
 import com.example.data.db.VaultItemEntity
 import com.example.data.model.FileItem
 import com.example.ui.theme.LibreCyan
@@ -36,11 +39,50 @@ fun SecureVaultScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val vaultState by viewModel.vaultState.collectAsState()
 
     var passcodeEntry by remember { mutableStateOf("") }
     var confirmPasscodeEntry by remember { mutableStateOf("") }
     var setupError by remember { mutableStateOf<String?>(null) }
+
+    fun launchBiometricUnlock() {
+        val activity = context as? androidx.fragment.app.FragmentActivity
+        if (activity == null) {
+            Toast.makeText(context, "Biometric authentication requires Activity context", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        BiometricAuthHelper.authenticate(
+            activity = activity,
+            title = "Unlock Secure Vault",
+            subtitle = "Biometric Verification",
+            description = "Authenticate with fingerprint or face recognition to unlock your encrypted files",
+            negativeButtonText = "Use Passcode",
+            onSuccess = {
+                viewModel.unlockVaultWithBiometrics(
+                    onSuccess = {
+                        Toast.makeText(context, "Vault unlocked with biometrics", Toast.LENGTH_SHORT).show()
+                    },
+                    onError = { msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                )
+            },
+            onError = { err ->
+                if (!err.contains("Cancelled", ignoreCase = true)) {
+                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onFailed = {
+                Toast.makeText(context, "Biometric recognition failed", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshVaultStatus()
+    }
 
     Scaffold(
         topBar = {
@@ -228,6 +270,46 @@ fun SecureVaultScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
+                        // Biometric Unlock Button if available
+                        if (vaultState.isBiometricAvailable) {
+                            FilledTonalButton(
+                                onClick = { launchBiometricUnlock() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("vault_biometric_unlock_button"),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = LibreIndigo.copy(alpha = 0.15f),
+                                    contentColor = LibreIndigo
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = "Fingerprint / Face Unlock",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Unlock with Biometrics", fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                                Text(
+                                    text = " OR ",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
                         OutlinedTextField(
                             value = passcodeEntry,
                             onValueChange = { passcodeEntry = it },
@@ -274,6 +356,56 @@ fun SecureVaultScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
+                            if (vaultState.isBiometricAvailable) {
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (vaultState.isBiometricEnabled) LibreEmerald.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 20.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Fingerprint,
+                                                contentDescription = "Biometric Lock",
+                                                tint = if (vaultState.isBiometricEnabled) LibreEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Biometric Quick Unlock",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 13.sp
+                                                )
+                                                Text(
+                                                    text = if (vaultState.isBiometricEnabled) "Secured with fingerprint & face unlock" else "Tap toggle to enable biometric access",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        Switch(
+                                            checked = vaultState.isBiometricEnabled,
+                                            onCheckedChange = { viewModel.toggleBiometricUnlock(it) },
+                                            modifier = Modifier.testTag("vault_biometric_toggle")
+                                        )
+                                    }
+                                }
+                            }
+
                             Icon(
                                 imageVector = Icons.Default.EnhancedEncryption,
                                 contentDescription = null,
@@ -295,6 +427,57 @@ fun SecureVaultScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
+                            if (vaultState.isBiometricAvailable) {
+                                item {
+                                    Card(
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (vaultState.isBiometricEnabled) LibreEmerald.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Fingerprint,
+                                                    contentDescription = "Biometric Lock",
+                                                    tint = if (vaultState.isBiometricEnabled) LibreEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(
+                                                        text = "Biometric Quick Unlock",
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 13.sp
+                                                    )
+                                                    Text(
+                                                        text = if (vaultState.isBiometricEnabled) "Secured with fingerprint & face unlock" else "Tap toggle to enable biometric access",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            Switch(
+                                                checked = vaultState.isBiometricEnabled,
+                                                onCheckedChange = { viewModel.toggleBiometricUnlock(it) },
+                                                modifier = Modifier.testTag("vault_biometric_toggle")
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             item {
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),

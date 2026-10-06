@@ -5,7 +5,14 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,13 +32,26 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.ui.components.*
 import com.example.ui.screens.*
 import com.example.ui.theme.LibreFilesTheme
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.NavigationScreen
 
-class MainActivity : ComponentActivity() {
+import androidx.fragment.app.FragmentActivity
+
+object NavRoutes {
+    const val DASHBOARD = "dashboard"
+    const val EXPLORER = "explorer"
+    const val ANALYZER = "analyzer"
+    const val VAULT = "vault"
+    const val SETTINGS = "settings"
+}
+
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -70,6 +90,39 @@ fun MainAppContent(viewModel: MainViewModel) {
 
     var activeTextFile by remember { mutableStateOf(viewModel.activeTextEditorFile) }
     var activeDetailsFile by remember { mutableStateOf(viewModel.activeDetailsFile) }
+
+    val navController = rememberNavController()
+
+    fun navigateTo(route: String, screen: NavigationScreen) {
+        viewModel.navigateToScreen(screen)
+        if (navController.currentDestination?.route != route) {
+            navController.navigate(route) {
+                popUpTo(NavRoutes.DASHBOARD) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
+    // Sync external navigation triggers (e.g. Dashboard category clicks) with NavController
+    LaunchedEffect(currentScreen) {
+        val targetRoute = when (currentScreen) {
+            NavigationScreen.DASHBOARD -> NavRoutes.DASHBOARD
+            NavigationScreen.EXPLORER -> NavRoutes.EXPLORER
+            NavigationScreen.ANALYZER -> NavRoutes.ANALYZER
+            NavigationScreen.VAULT -> NavRoutes.VAULT
+            NavigationScreen.SETTINGS -> NavRoutes.SETTINGS
+        }
+        if (navController.currentDestination?.route != targetRoute) {
+            navController.navigate(targetRoute) {
+                popUpTo(NavRoutes.DASHBOARD) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     // Keep active file in sync
     LaunchedEffect(viewModel.activeTextEditorFile) {
@@ -115,79 +168,81 @@ fun MainAppContent(viewModel: MainViewModel) {
                         )
                     }
 
-                    NavigationBar(
-                        modifier = Modifier.testTag("main_bottom_nav"),
-                        tonalElevation = 8.dp
-                    ) {
-                        NavigationBarItem(
-                            selected = currentScreen == NavigationScreen.DASHBOARD,
-                            onClick = { viewModel.navigateToScreen(NavigationScreen.DASHBOARD) },
-                            icon = {
-                                Icon(
-                                    imageVector = if (currentScreen == NavigationScreen.DASHBOARD) Icons.Default.Dashboard else Icons.Outlined.Dashboard,
-                                    contentDescription = "Dashboard",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = { Text("Home", fontSize = 11.sp) },
-                            modifier = Modifier.testTag("nav_dashboard")
-                        )
+                    if (!(currentScreen == NavigationScreen.EXPLORER && explorerState.isSelectionMode)) {
+                        NavigationBar(
+                            modifier = Modifier.testTag("main_bottom_nav"),
+                            tonalElevation = 8.dp
+                        ) {
+                            NavigationBarItem(
+                                selected = currentScreen == NavigationScreen.DASHBOARD,
+                                onClick = { navigateTo(NavRoutes.DASHBOARD, NavigationScreen.DASHBOARD) },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (currentScreen == NavigationScreen.DASHBOARD) Icons.Default.Dashboard else Icons.Outlined.Dashboard,
+                                        contentDescription = "Dashboard",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                label = { Text("Home", fontSize = 11.sp) },
+                                modifier = Modifier.testTag("nav_dashboard")
+                            )
 
-                        NavigationBarItem(
-                            selected = currentScreen == NavigationScreen.EXPLORER,
-                            onClick = { viewModel.navigateToScreen(NavigationScreen.EXPLORER) },
-                            icon = {
-                                Icon(
-                                    imageVector = if (currentScreen == NavigationScreen.EXPLORER) Icons.Default.Folder else Icons.Outlined.Folder,
-                                    contentDescription = "Explorer",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = { Text("Files", fontSize = 11.sp) },
-                            modifier = Modifier.testTag("nav_explorer")
-                        )
+                            NavigationBarItem(
+                                selected = currentScreen == NavigationScreen.EXPLORER,
+                                onClick = { navigateTo(NavRoutes.EXPLORER, NavigationScreen.EXPLORER) },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (currentScreen == NavigationScreen.EXPLORER) Icons.Default.Folder else Icons.Outlined.Folder,
+                                        contentDescription = "Explorer",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                label = { Text("Files", fontSize = 11.sp) },
+                                modifier = Modifier.testTag("nav_explorer")
+                            )
 
-                        NavigationBarItem(
-                            selected = currentScreen == NavigationScreen.ANALYZER,
-                            onClick = { viewModel.navigateToScreen(NavigationScreen.ANALYZER) },
-                            icon = {
-                                Icon(
-                                    imageVector = if (currentScreen == NavigationScreen.ANALYZER) Icons.Default.PieChart else Icons.Outlined.PieChart,
-                                    contentDescription = "Analyze",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = { Text("Analyze", fontSize = 11.sp) },
-                            modifier = Modifier.testTag("nav_analyzer")
-                        )
+                            NavigationBarItem(
+                                selected = currentScreen == NavigationScreen.ANALYZER,
+                                onClick = { navigateTo(NavRoutes.ANALYZER, NavigationScreen.ANALYZER) },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (currentScreen == NavigationScreen.ANALYZER) Icons.Default.PieChart else Icons.Outlined.PieChart,
+                                        contentDescription = "Analyze",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                label = { Text("Analyze", fontSize = 11.sp) },
+                                modifier = Modifier.testTag("nav_analyzer")
+                            )
 
-                        NavigationBarItem(
-                            selected = currentScreen == NavigationScreen.VAULT,
-                            onClick = { viewModel.navigateToScreen(NavigationScreen.VAULT) },
-                            icon = {
-                                Icon(
-                                    imageVector = if (currentScreen == NavigationScreen.VAULT) Icons.Default.Lock else Icons.Outlined.Lock,
-                                    contentDescription = "Vault",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = { Text("Vault", fontSize = 11.sp) },
-                            modifier = Modifier.testTag("nav_vault")
-                        )
+                            NavigationBarItem(
+                                selected = currentScreen == NavigationScreen.VAULT,
+                                onClick = { navigateTo(NavRoutes.VAULT, NavigationScreen.VAULT) },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (currentScreen == NavigationScreen.VAULT) Icons.Default.Lock else Icons.Outlined.Lock,
+                                        contentDescription = "Vault",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                label = { Text("Vault", fontSize = 11.sp) },
+                                modifier = Modifier.testTag("nav_vault")
+                            )
 
-                        NavigationBarItem(
-                            selected = currentScreen == NavigationScreen.SETTINGS,
-                            onClick = { viewModel.navigateToScreen(NavigationScreen.SETTINGS) },
-                            icon = {
-                                Icon(
-                                    imageVector = if (currentScreen == NavigationScreen.SETTINGS) Icons.Default.Shield else Icons.Outlined.Shield,
-                                    contentDescription = "Privacy",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            },
-                            label = { Text("Privacy", fontSize = 11.sp) },
-                            modifier = Modifier.testTag("nav_privacy")
-                        )
+                            NavigationBarItem(
+                                selected = currentScreen == NavigationScreen.SETTINGS,
+                                onClick = { navigateTo(NavRoutes.SETTINGS, NavigationScreen.SETTINGS) },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (currentScreen == NavigationScreen.SETTINGS) Icons.Default.Shield else Icons.Outlined.Shield,
+                                        contentDescription = "Privacy",
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                label = { Text("Privacy", fontSize = 11.sp) },
+                                modifier = Modifier.testTag("nav_privacy")
+                            )
+                        }
                     }
                 }
             }
@@ -216,7 +271,7 @@ fun MainAppContent(viewModel: MainViewModel) {
                 ) {
                     NavigationRailItem(
                         selected = currentScreen == NavigationScreen.DASHBOARD,
-                        onClick = { viewModel.navigateToScreen(NavigationScreen.DASHBOARD) },
+                        onClick = { navigateTo(NavRoutes.DASHBOARD, NavigationScreen.DASHBOARD) },
                         icon = {
                             Icon(
                                 imageVector = if (currentScreen == NavigationScreen.DASHBOARD) Icons.Default.Dashboard else Icons.Outlined.Dashboard,
@@ -229,7 +284,7 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                     NavigationRailItem(
                         selected = currentScreen == NavigationScreen.EXPLORER,
-                        onClick = { viewModel.navigateToScreen(NavigationScreen.EXPLORER) },
+                        onClick = { navigateTo(NavRoutes.EXPLORER, NavigationScreen.EXPLORER) },
                         icon = {
                             Icon(
                                 imageVector = if (currentScreen == NavigationScreen.EXPLORER) Icons.Default.Folder else Icons.Outlined.Folder,
@@ -242,7 +297,7 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                     NavigationRailItem(
                         selected = currentScreen == NavigationScreen.ANALYZER,
-                        onClick = { viewModel.navigateToScreen(NavigationScreen.ANALYZER) },
+                        onClick = { navigateTo(NavRoutes.ANALYZER, NavigationScreen.ANALYZER) },
                         icon = {
                             Icon(
                                 imageVector = if (currentScreen == NavigationScreen.ANALYZER) Icons.Default.PieChart else Icons.Outlined.PieChart,
@@ -255,7 +310,7 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                     NavigationRailItem(
                         selected = currentScreen == NavigationScreen.VAULT,
-                        onClick = { viewModel.navigateToScreen(NavigationScreen.VAULT) },
+                        onClick = { navigateTo(NavRoutes.VAULT, NavigationScreen.VAULT) },
                         icon = {
                             Icon(
                                 imageVector = if (currentScreen == NavigationScreen.VAULT) Icons.Default.Lock else Icons.Outlined.Lock,
@@ -268,7 +323,7 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                     NavigationRailItem(
                         selected = currentScreen == NavigationScreen.SETTINGS,
-                        onClick = { viewModel.navigateToScreen(NavigationScreen.SETTINGS) },
+                        onClick = { navigateTo(NavRoutes.SETTINGS, NavigationScreen.SETTINGS) },
                         icon = {
                             Icon(
                                 imageVector = if (currentScreen == NavigationScreen.SETTINGS) Icons.Default.Shield else Icons.Outlined.Shield,
@@ -294,15 +349,72 @@ fun MainAppContent(viewModel: MainViewModel) {
                         }
                     }
 
-                    Box(modifier = Modifier.weight(1f)) {
-                        Crossfade(targetState = currentScreen, label = "screen_transition") { screen ->
-                            when (screen) {
-                                NavigationScreen.DASHBOARD -> DashboardScreen(viewModel = viewModel)
-                                NavigationScreen.EXPLORER -> ExplorerScreen(viewModel = viewModel)
-                                NavigationScreen.ANALYZER -> StorageAnalyzerScreen(viewModel = viewModel)
-                                NavigationScreen.VAULT -> SecureVaultScreen(viewModel = viewModel)
-                                NavigationScreen.SETTINGS -> PrivacyAboutScreen(viewModel = viewModel)
-                            }
+                    // Material 3 Expressive motion navigation between views
+                    NavHost(
+                        navController = navController,
+                        startDestination = NavRoutes.DASHBOARD,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        enterTransition = {
+                            slideInHorizontally(
+                                initialOffsetX = { fullWidth -> (fullWidth * 0.18f).toInt() },
+                                animationSpec = tween(
+                                    durationMillis = 380,
+                                    easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+                                )
+                            ) + fadeIn(
+                                animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing)
+                            )
+                        },
+                        exitTransition = {
+                            slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
+                                animationSpec = tween(
+                                    durationMillis = 320,
+                                    easing = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
+                                )
+                            ) + fadeOut(
+                                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
+                            )
+                        },
+                        popEnterTransition = {
+                            slideInHorizontally(
+                                initialOffsetX = { fullWidth -> -(fullWidth * 0.18f).toInt() },
+                                animationSpec = tween(
+                                    durationMillis = 380,
+                                    easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+                                )
+                            ) + fadeIn(
+                                animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing)
+                            )
+                        },
+                        popExitTransition = {
+                            slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> (fullWidth * 0.18f).toInt() },
+                                animationSpec = tween(
+                                    durationMillis = 320,
+                                    easing = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
+                                )
+                            ) + fadeOut(
+                                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
+                            )
+                        }
+                    ) {
+                        composable(NavRoutes.DASHBOARD) {
+                            DashboardScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.EXPLORER) {
+                            ExplorerScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.ANALYZER) {
+                            StorageAnalyticsScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.VAULT) {
+                            SecureVaultScreen(viewModel = viewModel)
+                        }
+                        composable(NavRoutes.SETTINGS) {
+                            PrivacyAboutScreen(viewModel = viewModel)
                         }
                     }
                 }
