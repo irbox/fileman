@@ -1,0 +1,6 @@
+{
+  "name": "LibreFiles",
+  "description": "FOSS CX File Explorer alternative with Material 3 design, end-to-end encrypted vault, storage analytics, SAF integration, batch processing, and zero telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

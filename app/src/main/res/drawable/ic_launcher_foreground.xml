@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Back Folder Flap -->
+    <path
+        android:fillColor="#1E40AF"
+        android:pathData="M26,35 C26,32.8 27.8,31 30,31 L46,31 L52,37 L78,37 C80.2,37 82,38.8 82,41 L82,47 L26,47 Z" />
+    
+    <!-- White Document peaking out -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M34,36 L74,36 C75.1,36 76,36.9 76,38 L76,60 L32,60 L32,38 C32,36.9 32.9,36 34,36 Z" />
+    
+    <!-- Document subtle lines -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M38,42 L66,42 A1.5,1.5 0 0,1 66,45 L38,45 A1.5,1.5 0 0,1 38,42 Z M38,48 L56,48 A1.5,1.5 0 0,1 56,51 L38,51 A1.5,1.5 0 0,1 38,48 Z" />
+
+    <!-- Front Folder Body with Vibrant Gradient Accent -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M24,44 L84,44 C86.2,44 88,45.8 88,48 L88,73 C88,75.2 86.2,77 84,77 L24,77 C21.8,77 20,75.2 20,73 L20,48 C20,45.8 21.8,44 24,44 Z" />
+
+    <!-- Sleek Front Folder Trim Highlight -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M20,48 L88,48 L88,51 L20,51 Z" />
+
+    <!-- Privacy & Security Shield Emblem at bottom right of folder -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M64,56 L78,56 C78,56 78,67 71,73 C64,67 64,56 64,56 Z" />
+    <path
+        android:fillColor="#22C55E"
+        android:pathData="M65.5,57.5 L76.5,57.5 C76.5,57.5 76.5,66 71,71.2 C65.5,66 65.5,57.5 65.5,57.5 Z" />
+    <!-- Checkmark inside shield -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68.5,63.5 L70.2,65.2 L73.8,61.2 L75,62.4 L70.2,67.4 L67.3,64.7 Z" />
+</vector>
